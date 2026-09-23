@@ -97,3 +97,10 @@ done
 gh extension install taco3064/gh-shoal --pin <validation-release-tag>
 gh shoal --help
 ```
+
+The post-merge release gate verifies distribution mechanics: tag selection,
+release publication, asset upload, digest, attestation, and remote asset
+resolution. It is not a substitute for PR-stage runtime testing. If the remote
+install resolves but `gh shoal --help` crashes or exposes behavior that the PR
+exact-head local-install gate should have caught, treat that as a PR validation
+escape and tighten PR CI before closing the release-foundation issue.
