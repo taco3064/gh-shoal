@@ -31,8 +31,8 @@ jobs:
       - name: Smoke root help
         run: ./gh-shoal --help
 
-  release-build-smoke:
-    name: release build smoke
+  release-readiness:
+    name: release readiness
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,6 +42,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Verify release workflow configuration
+        run: bash script/verify-release-workflow.sh
 
       - name: Build release asset matrix
         run: script/build-release.sh v0.0.0-ci
@@ -59,8 +62,8 @@ jobs:
       - name: Smoke Linux amd64 release binary
         run: ./dist/gh-shoal-linux-amd64 --help
 
-  native-smoke:
-    name: native smoke (${{ matrix.os }})
+  local-extension-install:
+    name: local extension install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -75,14 +78,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          path: gh-shoal
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: gh-shoal/go.mod
 
       - name: Build native executable
+        working-directory: gh-shoal
         run: go build -o ${{ matrix.binary }} ./cmd/gh-shoal
 
       - name: Smoke root help
+        working-directory: gh-shoal
         run: ./${{ matrix.binary }} --help
+
+      - name: Install local extension through GitHub CLI
+        working-directory: gh-shoal
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GH_CONFIG_DIR="${RUNNER_TEMP}/gh-config"
+          gh extension install .
+          gh shoal --help
