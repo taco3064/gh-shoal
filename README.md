@@ -5,11 +5,11 @@ GitHub CLI extension.
 
 ## Install
 
-Prerelease validation artifacts are installed through the GitHub CLI extension
-path with a pinned release tag:
+Validation releases are installed through the GitHub CLI extension path with a
+pinned release tag:
 
 ```bash
-gh extension install taco3064/gh-shoal --pin <prerelease-tag>
+gh extension install taco3064/gh-shoal --pin <validation-release-tag>
 ```
 
 ## Build
@@ -45,15 +45,29 @@ unknown commands and are not shown as shipped capabilities.
 Release publication is owned by this repository through
 `.github/workflows/release.yml`.
 
-Push a version tag to publish precompiled GitHub CLI extension assets:
+Pull request validation proves release readiness without creating a real tag or
+GitHub Release. It builds the full asset matrix, checks release workflow
+configuration, runs native smoke checks, installs the current checkout through
+GitHub CLI's local extension path, and verifies:
 
 ```bash
-git tag v0.1.0-rc.1
-git push origin v0.1.0-rc.1
+gh extension install .
+gh shoal --help
 ```
 
-Tags containing a hyphen, such as `v0.1.0-rc.1`, are published as GitHub
-prereleases by `cli/gh-extension-precompile`.
+Normal release publication happens only after merge. Tag the intended `main`
+commit to publish precompiled GitHub CLI extension assets:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The release tag must point at the exact `main` commit intended for publication.
+PR-stage tags and PR-stage GitHub Releases are not part of the normal release
+lifecycle.
 
 The release workflow builds this initial matrix:
 
@@ -67,3 +81,19 @@ The release workflow builds this initial matrix:
 Artifact Attestations are generated for the published executables so users can
 verify the relationship between the `gh-shoal` repository, release workflow,
 source commit, and released binary.
+
+After the release workflow completes, verify the published assets, attestations,
+and remote installation before closing the release-foundation issue:
+
+```bash
+gh release download <validation-release-tag> \
+  --repo taco3064/gh-shoal \
+  --pattern "gh-shoal-*"
+
+for asset in gh-shoal-*; do
+  gh attestation verify "$asset" --repo taco3064/gh-shoal
+done
+
+gh extension install taco3064/gh-shoal --pin <validation-release-tag>
+gh shoal --help
+```
