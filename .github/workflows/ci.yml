@@ -1,0 +1,88 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build extension executable
+        run: go build -o gh-shoal ./cmd/gh-shoal
+
+      - name: Smoke root help
+        run: ./gh-shoal --help
+
+  release-build-smoke:
+    name: release build smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build release asset matrix
+        run: script/build-release.sh v0.0.0-ci
+
+      - name: Verify expected release assets
+        run: |
+          set -euo pipefail
+          test -x dist/gh-shoal_v0.0.0-ci_linux-amd64
+          test -x dist/gh-shoal_v0.0.0-ci_linux-arm64
+          test -x dist/gh-shoal_v0.0.0-ci_darwin-amd64
+          test -x dist/gh-shoal_v0.0.0-ci_darwin-arm64
+          test -f dist/gh-shoal_v0.0.0-ci_windows-amd64.exe
+          test -f dist/gh-shoal_v0.0.0-ci_windows-arm64.exe
+
+      - name: Smoke Linux amd64 release binary
+        run: ./dist/gh-shoal_v0.0.0-ci_linux-amd64 --help
+
+  native-smoke:
+    name: native smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary: gh-shoal
+          - os: macos-latest
+            binary: gh-shoal
+          - os: windows-latest
+            binary: gh-shoal.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build native executable
+        run: go build -o ${{ matrix.binary }} ./cmd/gh-shoal
+
+      - name: Smoke root help
+        run: ./${{ matrix.binary }} --help
