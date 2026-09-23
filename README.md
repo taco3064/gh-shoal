@@ -28,12 +28,17 @@ gh shoal --help
 
 ## Current CLI surface
 
-This foundation release intentionally ships only the root `gh shoal` namespace,
-help, version output, and command-routing foundation.
+The extension includes `gh shoal init` for repair of a direct Personal Account
+fork of the canonical Network Root. Run it from a clean local `main` synchronized
+with the fork's remote `main`, while authenticated as the fork owner with `gh auth`.
+It synchronizes the canonical Issue Form and Summary Workflow, preserves your
+`README.md` policy, and commits and pushes only if either managed file changes.
+On a fresh fork, the owner must first open the fork's Actions page and confirm
+GitHub's workflow enablement prompt. `init` does not enable Actions or workflows;
+its success confirms station file synchronization, not workflow execution readiness.
 
 Product command semantics are delivered by later milestones:
 
-- `gh shoal init`
 - `gh shoal review`
 - `gh shoal re-review`
 

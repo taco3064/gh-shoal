@@ -16,5 +16,8 @@ func main() {
 		Err:     os.Stderr,
 	})
 
+	if err := app.Register(cli.Command{Name: "init", Summary: "Repair and synchronize the Reviewer Node", Run: cli.NewInit()}); err != nil {
+        panic(err)
+    }
 	os.Exit(app.Run(os.Args[1:]))
 }
