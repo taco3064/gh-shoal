@@ -1,0 +1,26 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    name: publish precompiled extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v5
+
+      - name: Publish GitHub CLI extension release
+        uses: cli/gh-extension-precompile@v2.2.0
+        with:
+          go_version_file: go.mod
+          build_script_override: script/build-release.sh
+          generate_attestations: true
