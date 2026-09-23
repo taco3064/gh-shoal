@@ -49,15 +49,15 @@ jobs:
       - name: Verify expected release assets
         run: |
           set -euo pipefail
-          test -x dist/gh-shoal_v0.0.0-ci_linux-amd64
-          test -x dist/gh-shoal_v0.0.0-ci_linux-arm64
-          test -x dist/gh-shoal_v0.0.0-ci_darwin-amd64
-          test -x dist/gh-shoal_v0.0.0-ci_darwin-arm64
-          test -f dist/gh-shoal_v0.0.0-ci_windows-amd64.exe
-          test -f dist/gh-shoal_v0.0.0-ci_windows-arm64.exe
+          test -x dist/gh-shoal-linux-amd64
+          test -x dist/gh-shoal-linux-arm64
+          test -x dist/gh-shoal-darwin-amd64
+          test -x dist/gh-shoal-darwin-arm64
+          test -f dist/gh-shoal-windows-amd64.exe
+          test -f dist/gh-shoal-windows-arm64.exe
 
       - name: Smoke Linux amd64 release binary
-        run: ./dist/gh-shoal_v0.0.0-ci_linux-amd64 --help
+        run: ./dist/gh-shoal-linux-amd64 --help
 
   native-smoke:
     name: native smoke (${{ matrix.os }})
