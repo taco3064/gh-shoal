@@ -64,5 +64,15 @@ After merge, real distribution verification is main-only:
    gh shoal --help
    ```
 
+The main-stage gate is allowed to fail only on distribution mechanics: tag
+selection, release publication, asset upload, digest, attestation, or GitHub CLI
+remote asset resolution. It must not be used to discover ordinary extension
+runtime defects.
+
+If a main-stage remote install succeeds but `gh shoal --help` crashes or returns
+behavior that the exact PR head local-install gate should have caught, treat that
+as a PR validation escape. Tighten the PR exact-head runtime gate before closing
+the release-foundation work item.
+
 Close the release-foundation work item only after the main-stage distribution
 gate passes.
