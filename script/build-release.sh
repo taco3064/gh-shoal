@@ -21,7 +21,7 @@ targets=(
 
 for target in "${targets[@]}"; do
   read -r goos goarch ext <<< "$target"
-  output="dist/gh-shoal_${tag}_${goos}-${goarch}${ext:-}"
+  output="dist/gh-shoal-${goos}-${goarch}${ext:-}"
   echo "building ${output}"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
     -trimpath \
