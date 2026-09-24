@@ -19,7 +19,7 @@ func main() {
 	if err := app.Register(cli.Command{Name: "init", Summary: "Repair and synchronize the Reviewer Node", Run: cli.NewInit()}); err != nil {
 		panic(err)
 	}
-	if err := app.Register(cli.Command{Name: "review", Summary: "Admit open Review Requests", Run: cli.NewReview()}); err != nil {
+	if err := app.Register(cli.Command{Name: "review", Summary: "Review pending requests with a selected Local AI Agent", Run: cli.NewReview()}); err != nil {
 		panic(err)
 	}
 	os.Exit(app.Run(os.Args[1:]))

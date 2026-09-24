@@ -37,11 +37,23 @@ On a fresh fork, the owner must first open the fork's Actions page and confirm
 GitHub's workflow enablement prompt. `init` does not enable Actions or workflows;
 its success confirms station file synchronization, not workflow execution readiness.
 
-`gh shoal review` scans all current open Issues in the Reviewer Node, validates
-the Review Request and direct-fork membership, and routes admitted requests into
-a single canonical thread per stable Repository ID pair. Invalid requests receive
-an explanation and are closed. The initial thread remains pending for semantic
-Review; this milestone does not run an agent or change Star state.
+Run Automated Review from a clean local Reviewer Node checkout, authenticated as
+the fork owner:
+
+```bash
+gh shoal review --agent codex
+```
+
+Choose one installed Local AI Agent explicitly: `claude`, `codex`, `gemini`,
+`opencode`, `cursor`, `grok`, `qwen`, or `kimi`. The extension scans all current
+open Issues and applies the admission rules. Invalid requests receive an
+explanation and are closed. Valid pending Reviews run in FIFO batches of at
+most five. The Agent reads the Reviewer Node's `README.md` policy and writes
+its judgments to the ignored temporary `.shoal/review-results.json` file.
+The extension then ensures the corresponding Star state, appends a
+machine-readable Review Result with the Agent explanation and commit identities,
+and closes successfully completed Issues. Failed items remain open for a later
+run. The extension does not synchronize your local branch or run Target code.
 
 The machine-readable request and event contract comes from
 [`shoal-app/protocol/review-v1.json`](https://github.com/taco3064/shoal-app/blob/main/protocol/review-v1.json).
@@ -76,8 +88,8 @@ commit to publish precompiled GitHub CLI extension assets:
 ```bash
 git switch main
 git pull --ff-only origin main
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 The release tag must point at the exact `main` commit intended for publication.
