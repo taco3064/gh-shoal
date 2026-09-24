@@ -115,9 +115,18 @@ func (c reviewCommand) reopen(ctx context.Context, node string, number int) erro
 }
 
 func (c reviewCommand) execute(ctx context.Context, args []string) error {
-	if len(args) != 0 {
-		return errors.New("usage: gh shoal review")
+	if len(args) != 2 || args[0] != "--agent" {
+		return errors.New("usage: gh shoal review --agent <agent>")
 	}
+	if _, ok := agentCommands[args[1]]; !ok {
+		return fmt.Errorf("unsupported Local AI Agent %q", args[1])
+	}
+	return c.automated(ctx, args[1])
+}
+
+// admitOpen retains the milestone [05] admission path as the single source of
+// truth. Automated Review consumes its public admission records afterwards.
+func (c reviewCommand) admitOpen(ctx context.Context) error {
 	if _, err := c.run(ctx, "gh", "auth", "status"); err != nil {
 		return fmt.Errorf("gh auth is required: %w", err)
 	}

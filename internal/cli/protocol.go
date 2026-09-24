@@ -101,6 +101,7 @@ type reviewEvent struct {
 	Verdict                  string `json:"verdict,omitempty"`
 	ActualStarState          *bool  `json:"actualStarState,omitempty"`
 	ReviewedAt               string `json:"reviewedAt,omitempty"`
+	Explanation              string `json:"explanation,omitempty"`
 	EligibilityTargetCommit  string `json:"eligibilityTargetCommit,omitempty"`
 	RequestIssueNumber       int    `json:"requestIssueNumber,omitempty"`
 	Reason                   string `json:"reason,omitempty"`

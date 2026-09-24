@@ -121,3 +121,14 @@ jobs:
           export GH_CONFIG_DIR="${RUNNER_TEMP}/gh-config"
           gh extension install .
           gh shoal --help
+          gh shoal --help | grep -q review
+          if gh shoal review 2>missing-agent.log; then
+            echo 'review accepted a missing Agent' >&2
+            exit 1
+          fi
+          grep -q 'review --agent <agent>' missing-agent.log
+          if gh shoal review --agent unsupported 2>unsupported-agent.log; then
+            echo 'review accepted an unsupported Agent' >&2
+            exit 1
+          fi
+          grep -q 'unsupported Local AI Agent' unsupported-agent.log

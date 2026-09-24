@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -47,6 +49,13 @@ type fakeReview struct {
 	head, policy string
 	calls        []string
 	failOn       string
+	resultFile   string
+	agentOutput  string
+	agentOutputs []string
+	agentCalls   int
+	starred      bool
+	dirty        bool
+	agentDirties bool
 }
 
 func fixture() *fakeReview {
@@ -69,12 +78,33 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		return nil, errors.New("injected failure")
 	}
 	if program == "git" {
+		if strings.Contains(command, " status --porcelain=v1 ") {
+			if f.dirty {
+				return []byte("?? untracked\x00"), nil
+			}
+			return nil, nil
+		}
 		if strings.HasSuffix(command, " remote") {
 			return []byte("origin\n"), nil
 		}
 		if strings.HasSuffix(command, "remote get-url origin") {
 			return []byte("https://github.com/reviewer/shoal-station.git\n"), nil
 		}
+	}
+	if program == "codex" || program == "claude" || program == "gemini" || program == "opencode" || program == "cursor-agent" || program == "grok" || program == "qwen" || program == "kimi" {
+		if f.agentDirties {
+			f.dirty = true
+		}
+		if f.agentCalls < len(f.agentOutputs) {
+			f.agentOutput = f.agentOutputs[f.agentCalls]
+		}
+		f.agentCalls++
+		if f.resultFile != "" {
+			if err := os.WriteFile(f.resultFile, []byte(f.agentOutput), 0600); err != nil {
+				return nil, err
+			}
+		}
+		return []byte("execution log only"), nil
 	}
 	if program != "gh" {
 		return nil, fmt.Errorf("unexpected command %s", command)
@@ -87,6 +117,10 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 	}
 	if args[1] == "--method" {
 		endpoint := args[3]
+		if endpoint == "user/starred/alice/project" || strings.HasPrefix(endpoint, "user/starred/alice/project-") {
+			f.starred = args[2] == "PUT"
+			return nil, nil
+		}
 		field := args[5]
 		var number int
 		if _, e := fmt.Sscanf(endpoint, "repos/reviewer/shoal-station/issues/%d", &number); e != nil {
@@ -113,6 +147,11 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 	}
 	var value any
 	switch {
+	case endpoint == "user/starred/alice/project" || strings.HasPrefix(endpoint, "user/starred/alice/project-"):
+		if f.starred {
+			return nil, nil
+		}
+		return nil, errors.New("HTTP 404: Not Found")
 	case endpoint == "user":
 		value = f.node.Owner
 	case endpoint == "repos/reviewer/shoal-station":
@@ -153,7 +192,19 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		value = f.target
 	case endpoint == "repos/alice/project" || endpoint == "repos/alice/renamed":
 		value = f.target
+	case strings.HasPrefix(endpoint, "repos/alice/project-") && !strings.Contains(endpoint, "/branches/"):
+		var n int
+		if _, err := fmt.Sscanf(endpoint, "repos/alice/project-%d", &n); err != nil {
+			return nil, err
+		}
+		clone := f.target
+		clone.ID = 55 + int64(n)
+		clone.Name = fmt.Sprintf("project-%d", n)
+		clone.FullName = "alice/" + clone.Name
+		value = clone
 	case strings.HasPrefix(endpoint, "repos/bob/project/branches/") || strings.HasPrefix(endpoint, "repos/alice/project/branches/") || strings.HasPrefix(endpoint, "repos/alice/renamed/branches/"):
+		value = map[string]any{"commit": map[string]any{"sha": f.head}}
+	case strings.HasPrefix(endpoint, "repos/alice/project-") && strings.Contains(endpoint, "/branches/"):
 		value = map[string]any{"commit": map[string]any{"sha": f.head}}
 	case strings.HasPrefix(endpoint, "repos/reviewer/shoal-station/commits?"):
 		value = []map[string]string{{"sha": f.policy}}
@@ -162,13 +213,25 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 	}
 	return json.Marshal(value)
 }
+
+func (f *fakeReview) automatedCommand(t *testing.T) reviewCommand {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".shoal"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	f.resultFile = filepath.Join(dir, ".shoal", "review-results.json")
+	c := f.command(t)
+	c.dir = dir
+	return c
+}
 func (f *fakeReview) command(t *testing.T) reviewCommand {
 	t.Helper()
 	return reviewCommand{run: f.run, dir: ".", protocol: protocolFixture(t), commentsCache: map[int][]reviewComment{}}
 }
 func (f *fakeReview) process(t *testing.T) {
 	t.Helper()
-	if err := f.command(t).execute(context.Background(), nil); err != nil {
+	if err := f.command(t).admitOpen(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -297,7 +360,7 @@ func TestRetryAfterReReviewEventAppend(t *testing.T) {
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	f.head = testSHA2
 	f.failOn = "-f state=open"
-	if err := f.command(t).execute(context.Background(), nil); err == nil {
+	if err := f.command(t).admitOpen(context.Background()); err == nil {
 		t.Fatal("expected injected failure")
 	}
 	if len(f.bodies(1)) != 3 || f.state(2) != "open" {
@@ -329,7 +392,7 @@ func TestDamagedCanonicalPreventsSecondThread(t *testing.T) {
 	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
-	err := f.command(t).execute(context.Background(), nil)
+	err := f.command(t).admitOpen(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "damaged request payload") || f.state(2) != "open" || len(f.bodies(2)) != 0 {
 		t.Fatalf("corrupted canonical created another thread: %v %+v", err, f)
 	}
@@ -348,7 +411,7 @@ func TestGitHubFailureDoesNotCloseRequest(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
 	f.failOn = "repos/alice/project"
-	if err := f.command(t).execute(context.Background(), nil); err == nil {
+	if err := f.command(t).admitOpen(context.Background()); err == nil {
 		t.Fatal("expected API failure")
 	}
 	if f.state(1) != "open" || len(f.bodies(1)) != 0 {
@@ -396,7 +459,7 @@ func TestEditedCanonicalNameCannotRedirectRecordedIdentity(t *testing.T) {
 	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
-	err := f.command(t).execute(context.Background(), nil)
+	err := f.command(t).admitOpen(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "original request payload") || f.state(2) != "open" {
 		t.Fatalf("edited body redirected stable identity: %v %+v", err, f)
 	}
