@@ -1,0 +1,49 @@
+{
+  "protocolVersion": "1",
+  "request": {
+    "repositoryHeading": "Repository name",
+    "invitationHeading": "Invitation message",
+    "emptyInvitation": "_No response_"
+  },
+  "event": {
+    "marker": "shoal-review-event:v1",
+    "policyPath": "README.md",
+    "lifecycleType": "RE_REVIEW_REQUESTED",
+    "judgmentTypes": [
+      "REVIEWED",
+      "RE_REVIEWED",
+      "STAR_REVOKED",
+      "REVOKED_EXTERNALLY"
+    ],
+    "requiredLifecycleFields": [
+      "type",
+      "reviewerNodeId",
+      "targetRepositoryId",
+      "requestIssueNumber",
+      "eligibilityTargetCommit",
+      "reviewPolicyCommit",
+      "reason"
+    ],
+    "requiredJudgmentFields": [
+      "type",
+      "reviewerNodeId",
+      "targetRepositoryId",
+      "targetRepositoryFullName",
+      "targetDefaultBranch",
+      "targetCommit",
+      "reviewPolicyPath",
+      "reviewPolicyCommit",
+      "verdict",
+      "actualStarState",
+      "reviewedAt"
+    ]
+  },
+  "admission": {
+    "marker": "shoal-review-admission:v1",
+    "requiredFields": [
+      "reviewerNodeId",
+      "targetRepositoryId",
+      "repositoryName"
+    ]
+  }
+}
