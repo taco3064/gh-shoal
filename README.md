@@ -37,9 +37,19 @@ On a fresh fork, the owner must first open the fork's Actions page and confirm
 GitHub's workflow enablement prompt. `init` does not enable Actions or workflows;
 its success confirms station file synchronization, not workflow execution readiness.
 
-Product command semantics are delivered by later milestones:
+`gh shoal review` scans all current open Issues in the Reviewer Node, validates
+the Review Request and direct-fork membership, and routes admitted requests into
+a single canonical thread per stable Repository ID pair. Invalid requests receive
+an explanation and are closed. The initial thread remains pending for semantic
+Review; this milestone does not run an agent or change Star state.
 
-- `gh shoal review`
+The machine-readable request and event contract comes from
+[`shoal-app/protocol/review-v1.json`](https://github.com/taco3064/shoal-app/blob/main/protocol/review-v1.json).
+Its checked-in embedded copy at `internal/cli/protocol/review-v1.json` must remain
+byte-identical to the approved platform contract.
+
+Product command semantics delivered by later milestones:
+
 - `gh shoal re-review`
 
 Until those milestones are implemented, deferred product commands are treated as
