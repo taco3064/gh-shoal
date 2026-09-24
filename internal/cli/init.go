@@ -31,6 +31,7 @@ func systemRun(ctx context.Context, program string, args ...string) ([]byte, err
 }
 type repository struct {
  ID int64 `json:"id"`
+ HasIssues *bool `json:"has_issues"`
  FullName string `json:"full_name"`
  Fork bool `json:"fork"`
  DefaultBranch string `json:"default_branch"`
@@ -96,10 +97,36 @@ func (c initCommand) execute(ctx context.Context,args []string) error {
  if changed {
   if err=c.sync(ctx,pre,remote,contents);err!=nil{return err}
  }
+ if err=c.ensureIssues(ctx,node);err!=nil{return err}
  if err=c.validateNode(node,viewer.ID);err!=nil{return err}
  if _,err=c.call(ctx,"gh","auth","status");err!=nil{return err}
  for _,path:=range managedPaths{b,e:=os.ReadFile(filepath.Join(c.dir,path));if e!=nil||!bytes.Equal(b,contents[path]){return fmt.Errorf("managed file %s failed post-init verification: %w",path,e)}}
  return c.clean(ctx)
+}
+func (c initCommand) ensureIssues(ctx context.Context, node repository) error {
+	var current repository
+	endpoint := "repos/" + node.FullName
+	if err := c.api(ctx, endpoint, &current); err != nil {
+		return fmt.Errorf("cannot verify Reviewer Node Issues availability: %w", err)
+	}
+	if current.ID != node.ID || current.HasIssues == nil {
+		return errors.New("cannot verify Reviewer Node Issues availability or identity")
+	}
+	if *current.HasIssues {
+		return nil
+	}
+	// Send only the one repository setting that init is authorized to repair.
+	if _, err := c.call(ctx, "gh", "api", "--method", "PATCH", endpoint, "-F", "has_issues=true"); err != nil {
+		return fmt.Errorf("cannot enable Reviewer Node Issues: %w", err)
+	}
+	var verified repository
+	if err := c.api(ctx, endpoint, &verified); err != nil {
+		return fmt.Errorf("cannot verify Reviewer Node Issues after enablement: %w", err)
+	}
+	if verified.ID != node.ID || verified.HasIssues == nil || !*verified.HasIssues {
+		return errors.New("Reviewer Node Issues remain disabled or cannot be verified")
+	}
+	return nil
 }
 func (c initCommand) clean(ctx context.Context)error{
  s,e:=c.run(ctx,"git","-C",c.dir,"status","--porcelain=v1","-z","--untracked-files=all");if e!=nil{return e};if len(s)!=0{return errors.New("init requires a clean index and working tree; commit or discard changes first")};return nil

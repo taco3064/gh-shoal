@@ -75,7 +75,7 @@ func TestCanonicalNoDiffDoesNotMutateActionsOrGit(t *testing.T){
    if len(args)==2&&args[0]=="api"{
     switch args[1]{
     case "user":return []byte(`{"id":42}`),nil
-    case "repos/reviewer/shoal-station":return []byte(`{"id":99,"full_name":"reviewer/shoal-station","fork":true,"default_branch":"main","owner":{"id":42,"type":"User"},"parent":{"id":1379044983}}`),nil
+    case "repos/reviewer/shoal-station":return []byte(`{"id":99,"full_name":"reviewer/shoal-station","fork":true,"default_branch":"main","has_issues":true,"owner":{"id":42,"type":"User"},"parent":{"id":1379044983}}`),nil
     case "repositories/1379044983":return []byte(`{"id":1379044983,"full_name":"root/shoal-station","default_branch":"main"}`),nil
     case "repos/root/shoal-station/git/ref/heads/main":return []byte(`{"object":{"sha":"`+head+`"}}`),nil
     }
@@ -94,6 +94,171 @@ func TestCanonicalNoDiffDoesNotMutateActionsOrGit(t *testing.T){
   if strings.Contains(call,"actions/")||strings.Contains(call,"--method")||strings.Contains(call," commit ")||strings.Contains(call," push "){t.Errorf("unexpected side effect or Actions readiness inference: %s",call)}
  }
  after,err:=os.ReadFile(filepath.Join(dir,"README.md"));if err!=nil||string(after)!=string(readme){t.Fatalf("README changed: %v",err)}
+}
+
+func TestEnsureIssues(t *testing.T) {
+	node := repository{ID: 99, FullName: "reviewer/shoal-station"}
+	for _, tc := range []struct {
+		name       string
+		responses  []string
+		patchError bool
+		wantError  bool
+		wantWrites int
+	}{
+		{name: "already enabled", responses: []string{`{"id":99,"has_issues":true}`}},
+		{name: "disabled then enabled", responses: []string{`{"id":99,"has_issues":false}`, `{"id":99,"has_issues":true}`}, wantWrites: 1},
+		{name: "write fails", responses: []string{`{"id":99,"has_issues":false}`}, patchError: true, wantError: true, wantWrites: 1},
+		{name: "still disabled", responses: []string{`{"id":99,"has_issues":false}`, `{"id":99,"has_issues":false}`}, wantError: true, wantWrites: 1},
+		{name: "verification unavailable", responses: []string{`{"id":99,"has_issues":false}`, `{"id":99}`}, wantError: true, wantWrites: 1},
+		{name: "wrong repository identity", responses: []string{`{"id":100,"has_issues":false}`}, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reads, writes := 0, 0
+			c := initCommand{run: func(_ context.Context, program string, args ...string) ([]byte, error) {
+				if program != "gh" || len(args) < 2 || args[0] != "api" {
+					t.Fatalf("unexpected command: %s %v", program, args)
+				}
+				if len(args) == 2 && args[1] == "repos/reviewer/shoal-station" {
+					if reads >= len(tc.responses) {
+						t.Fatal("unexpected repository read")
+					}
+					out := tc.responses[reads]
+					reads++
+					return []byte(out), nil
+				}
+				expected := []string{"api", "--method", "PATCH", "repos/reviewer/shoal-station", "-F", "has_issues=true"}
+				if strings.Join(args, "\x00") != strings.Join(expected, "\x00") {
+					t.Fatalf("unexpected mutation (may modify unrelated settings): %v", args)
+				}
+				writes++
+				if tc.patchError {
+					return nil, errors.New("permission denied")
+				}
+				return []byte(`{"has_issues":true}`), nil
+			}}
+			err := c.ensureIssues(context.Background(), node)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("error = %v, want error = %v", err, tc.wantError)
+			}
+			if writes != tc.wantWrites {
+				t.Fatalf("writes = %d, want %d", writes, tc.wantWrites)
+			}
+		})
+	}
+}
+
+func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := systemRun(ctx, "git", append([]string{"-C", dir}, args...)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if _, err := systemRun(ctx, "git", "init", "--bare", remote); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-b", "main")
+	git("config", "user.name", "Reviewer")
+	git("config", "user.email", "reviewer@example.com")
+	contents := map[string][]byte{}
+	for _, path := range managedPaths {
+		contents[path] = []byte("canonical " + path + "\n")
+		p := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("outdated"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readme := []byte("My review policy\n")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), readme, 0644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-m", "fork state")
+	git("remote", "add", "origin", remote)
+	git("push", "origin", "HEAD:refs/heads/main")
+	pre := git("rev-parse", "HEAD")
+	head := strings.Repeat("a", 40)
+	issuesEnabled := false
+	failPatch := true
+	writes := 0
+	c := initCommand{dir: dir, run: func(ctx context.Context, program string, args ...string) ([]byte, error) {
+		if program == "git" {
+			if len(args) >= 5 && args[2] == "remote" && args[3] == "get-url" {
+				return []byte("https://github.com/reviewer/shoal-station.git"), nil
+			}
+			return systemRun(ctx, program, args...)
+		}
+		if program != "gh" {
+			t.Fatalf("unexpected program: %s", program)
+		}
+		if strings.Join(args, " ") == "auth status" {
+			return nil, nil
+		}
+		if len(args) == 2 && args[0] == "api" {
+			switch args[1] {
+			case "user":
+				return []byte(`{"id":42}`), nil
+			case "repos/reviewer/shoal-station":
+				return json.Marshal(map[string]any{"id": 99, "has_issues": issuesEnabled, "full_name": "reviewer/shoal-station", "fork": true, "owner": map[string]any{"id": 42, "type": "User"}, "parent": map[string]any{"id": rootID}})
+			case "repositories/1379044983":
+				return []byte(`{"id":1379044983,"full_name":"root/shoal-station","default_branch":"main"}`), nil
+			case "repos/root/shoal-station/git/ref/heads/main":
+				return []byte(`{"object":{"sha":"` + head + `"}}`), nil
+			}
+			prefix := "repos/root/shoal-station/contents/"
+			if strings.HasPrefix(args[1], prefix) {
+				path, _, ok := strings.Cut(strings.TrimPrefix(args[1], prefix), "?ref=")
+				if !ok || !strings.HasSuffix(args[1], "?ref="+head) || contents[path] == nil {
+					t.Fatalf("unexpected source %s", args[1])
+				}
+				return json.Marshal(map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString(contents[path])})
+			}
+		}
+		expected := []string{"api", "--method", "PATCH", "repos/reviewer/shoal-station", "-F", "has_issues=true"}
+		if strings.Join(args, "\x00") != strings.Join(expected, "\x00") {
+			t.Fatalf("unexpected mutation: %v", args)
+		}
+		writes++
+		if failPatch {
+			return nil, errors.New("permission denied")
+		}
+		issuesEnabled = true
+		return []byte(`{"has_issues":true}`), nil
+	}}
+	if err := c.execute(ctx, nil); err == nil {
+		t.Fatal("first init should fail at Issues enablement")
+	}
+	synced := git("rev-parse", "HEAD")
+	if synced == pre {
+		t.Fatal("successful managed-file sync was rolled back")
+	}
+	if got := git("status", "--porcelain"); got != "" {
+		t.Fatalf("dirty after failure: %s", got)
+	}
+	if got := git("ls-remote", "origin", "refs/heads/main"); !strings.HasPrefix(got, synced+"\t") {
+		t.Fatalf("successful sync not pushed: %s", got)
+	}
+	failPatch = false
+	if err := c.execute(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := git("rev-parse", "HEAD"); got != synced {
+		t.Fatalf("retry created unnecessary commit: %s", got)
+	}
+	if writes != 2 || !issuesEnabled {
+		t.Fatalf("Issues retry failed: writes=%d enabled=%v", writes, issuesEnabled)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "README.md")); err != nil || string(got) != string(readme) {
+		t.Fatalf("README changed: %v", err)
+	}
 }
 
 func TestSyncRepairsExecutableManagedFile(t *testing.T){
