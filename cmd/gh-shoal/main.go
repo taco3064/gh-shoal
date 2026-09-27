@@ -22,5 +22,8 @@ func main() {
 	if err := app.Register(cli.Command{Name: "review", Summary: "Review pending requests with a selected Local AI Agent", Run: cli.NewReview()}); err != nil {
 		panic(err)
 	}
+	if err := app.Register(cli.Command{Name: "re-review", Summary: "Re-review changed targets and maintain endorsements with a selected Local AI Agent", Run: cli.NewReReview()}); err != nil {
+		panic(err)
+	}
 	os.Exit(app.Run(os.Args[1:]))
 }

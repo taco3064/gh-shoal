@@ -55,17 +55,36 @@ machine-readable Review Result with the Agent explanation and commit identities,
 and closes successfully completed Issues. Failed items remain open for a later
 run. The extension does not synchronize your local branch or run Target code.
 
+Run Reviewer-triggered maintenance and pending Re-review work with the same
+explicit Local AI Agent contract:
+
+```bash
+gh shoal re-review --agent codex
+```
+
+`re-review` inspects existing canonical Review Threads, including completed
+closed threads and canonical threads already reopened by a valid
+`RE_REVIEW_REQUESTED` event. It uses the latest usable Review Judgment as the
+prior basis and compares the current Target default-branch HEAD plus the current
+`README.md` Review Policy commit. Threads with a changed basis are revalidated
+again immediately before semantic judgment and then processed through the same
+FIFO batches of at most five and the same Agent result contract as Automated
+Review. A successful semantic Re-review records a protocol-valid `RE_REVIEWED`
+Judgment using the judgment-start Target and Policy commits.
+
+When the Review Basis has not changed, `re-review` does not ask the Agent for a
+new judgment. Instead, it verifies endorsement state against the latest usable
+Judgment: a missing Star after PASS is restored, and a present Star after FAIL is
+removed. This deterministic maintenance does not create a new semantic Review
+Event. A closed thread with no usable prior Judgment is skipped rather than
+reconstructed, and malformed older comments do not override a newer valid
+Judgment. Target repositories are identified by stable GitHub Repository ID and
+are not executed during discovery, classification, or maintenance.
+
 The machine-readable request and event contract comes from
 [`shoal-app/protocol/review-v1.json`](https://github.com/taco3064/shoal-app/blob/main/protocol/review-v1.json).
 Its checked-in embedded copy at `internal/cli/protocol/review-v1.json` must remain
 byte-identical to the approved platform contract.
-
-Product command semantics delivered by later milestones:
-
-- `gh shoal re-review`
-
-Until those milestones are implemented, deferred product commands are treated as
-unknown commands and are not shown as shipped capabilities.
 
 ## Release
 
