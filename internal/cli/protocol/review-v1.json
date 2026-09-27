@@ -24,6 +24,26 @@
       "reviewPolicyCommit",
       "reason"
     ],
+    "automation": {
+      "allowedActors": [
+        {
+          "login": "github-actions[bot]",
+          "type": "Bot",
+          "appSlug": "github-actions"
+        }
+      ],
+      "allowedWorkflowPaths": [
+        ".github/workflows/reviewer-summary.yml"
+      ],
+      "requiredProvenanceFields": [
+        "actorLogin",
+        "repositoryId",
+        "workflowPath",
+        "workflowCommit",
+        "workflowRunId",
+        "workflowRunAttempt"
+      ]
+    },
     "requiredJudgmentFields": [
       "type",
       "reviewerNodeId",
