@@ -215,12 +215,12 @@ func (c reviewCommand) runAgent(ctx context.Context, agent string, node reviewRe
 	}
 	defer os.Remove(resultFile)
 	var prompt strings.Builder
-	fmt.Fprintf(&prompt, "Review the following Shoal Review Request Issues in ascending order for Reviewer Node https://github.com/%s.\n", node.FullName)
-	prompt.WriteString("The Review criteria are defined in this Reviewer Node's README.md. Read README.md first and use it as the authoritative Review Policy. Read each Issue URL, derive the Target Repository as the Issue author's account plus its required Repository name field, and inspect public repository evidence. Each repository needs an independent PASS or FAIL judgment. Do not execute Target Repository-provided code merely to validate admission.\n")
+	fmt.Fprintf(&prompt, "Review the following Shoal Review Threads in ascending Issue order for Reviewer Node https://github.com/%s.\n", node.FullName)
+	prompt.WriteString("The Review criteria are defined in this Reviewer Node's README.md. Read README.md first and use it as the authoritative Review Policy. The extension has already resolved each Target Repository deterministically; use the explicit Target URL listed for each Issue and do not derive Target identity from mutable Issue text. Inspect public repository evidence and make an independent PASS or FAIL judgment for each Target. Do not execute Target Repository-provided code merely to validate eligibility.\n")
 	prompt.WriteString("Do not comment on or close an Issue, Star or Unstar a repository, or create or mutate other GitHub state as part of the Review. You may only write the structured result file. Keep each review explanation concise and readable. The review explanation must not exceed 3,000 characters. Focus on decisive evidence and reasoning.\n")
 	fmt.Fprintf(&prompt, "Write one JSON object per Issue to %s, as an array (or {\"results\": [...]}); each object must contain only issue (integer), verdict (PASS or FAIL), and comment (repository-specific explanation). Do not use stdout as the result.\n", resultFile)
 	for _, item := range batch {
-		fmt.Fprintf(&prompt, "- https://github.com/%s/issues/%d\n", node.FullName, item.issue.Number)
+		fmt.Fprintf(&prompt, "- Issue: https://github.com/%s/issues/%d | Target: https://github.com/%s\n", node.FullName, item.issue.Number, item.target.FullName)
 	}
 	adapter := agentCommands[agent]
 	args := append(append([]string{}, adapter.arguments...), prompt.String())
@@ -277,22 +277,18 @@ func (c reviewCommand) runAgent(ctx context.Context, agent string, node reviewRe
 }
 
 func (c reviewCommand) complete(ctx context.Context, node reviewRepository, item pendingReview, result agentResult) error {
-	starEndpoint := "user/starred/" + item.target.FullName
-	method := "DELETE"
-	starred := false
-	if result.Verdict == "PASS" {
-		method = "PUT"
-		starred = true
+	return c.completeJudgment(ctx, node, item, result, "REVIEWED")
+}
+
+func (c reviewCommand) completeJudgment(ctx context.Context, node reviewRepository, item pendingReview, result agentResult, eventType string) error {
+	if eventType != "REVIEWED" && eventType != "RE_REVIEWED" {
+		return errors.New("unsupported Review Judgment Event type")
 	}
-	if _, err := c.run(ctx, "gh", "api", "--method", method, starEndpoint); err != nil {
-		return fmt.Errorf("cannot converge Star state: %w", err)
+	starred, err := c.convergeStar(ctx, item.target, result.Verdict)
+	if err != nil {
+		return err
 	}
-	// GitHub's Star endpoint returns 204 when starred and 404 otherwise.
-	_, starErr := c.run(ctx, "gh", "api", starEndpoint)
-	if starred && starErr != nil || !starred && (starErr == nil || !isNotFound(starErr)) {
-		return errors.New("cannot verify resulting Star state")
-	}
-	event := reviewEvent{Type: "REVIEWED", ReviewerNodeID: node.ID, TargetRepositoryID: item.target.ID, TargetRepositoryFullName: item.target.FullName, TargetDefaultBranch: item.target.DefaultBranch, TargetCommit: item.head, ReviewPolicyPath: c.protocol.Event.PolicyPath, ReviewPolicyCommit: item.policy, Verdict: result.Verdict, ActualStarState: &starred, ReviewedAt: time.Now().UTC().Format(time.RFC3339), Explanation: strings.TrimSpace(result.Comment)}
+	event := reviewEvent{Type: eventType, ReviewerNodeID: node.ID, TargetRepositoryID: item.target.ID, TargetRepositoryFullName: item.target.FullName, TargetDefaultBranch: item.target.DefaultBranch, TargetCommit: item.head, ReviewPolicyPath: c.protocol.Event.PolicyPath, ReviewPolicyCommit: item.policy, Verdict: result.Verdict, ActualStarState: &starred, ReviewedAt: time.Now().UTC().Format(time.RFC3339), Explanation: strings.TrimSpace(result.Comment)}
 	if !validEvent(event, c.protocol, node.ID, item.target.ID) {
 		return errors.New("constructed Review Event is invalid")
 	}
@@ -304,6 +300,33 @@ func (c reviewCommand) complete(ctx context.Context, node reviewRepository, item
 		return fmt.Errorf("cannot close completed Review Thread: %w", err)
 	}
 	return nil
+}
+
+func (c reviewCommand) convergeStar(ctx context.Context, target reviewRepository, verdict string) (bool, error) {
+	starEndpoint := "user/starred/" + target.FullName
+	desired := verdict == "PASS"
+	if !desired && verdict != "FAIL" {
+		return false, errors.New("invalid Review verdict")
+	}
+	_, stateErr := c.run(ctx, "gh", "api", starEndpoint)
+	actual := stateErr == nil
+	if stateErr != nil && !isNotFound(stateErr) {
+		return false, fmt.Errorf("cannot inspect current Star state: %w", stateErr)
+	}
+	if actual != desired {
+		method := "DELETE"
+		if desired {
+			method = "PUT"
+		}
+		if _, err := c.run(ctx, "gh", "api", "--method", method, starEndpoint); err != nil {
+			return false, fmt.Errorf("cannot converge Star state: %w", err)
+		}
+	}
+	_, verifyErr := c.run(ctx, "gh", "api", starEndpoint)
+	if desired && verifyErr != nil || !desired && (verifyErr == nil || !isNotFound(verifyErr)) {
+		return false, errors.New("cannot verify resulting Star state")
+	}
+	return desired, nil
 }
 
 func isNotFound(err error) bool {

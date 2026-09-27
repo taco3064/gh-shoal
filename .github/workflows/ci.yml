@@ -122,6 +122,7 @@ jobs:
           gh extension install .
           gh shoal --help
           gh shoal --help | grep -q review
+          gh shoal --help | grep -q re-review
           if gh shoal review 2>missing-agent.log; then
             echo 'review accepted a missing Agent' >&2
             exit 1
@@ -132,3 +133,13 @@ jobs:
             exit 1
           fi
           grep -q 'unsupported Local AI Agent' unsupported-agent.log
+          if gh shoal re-review 2>missing-re-review-agent.log; then
+            echo 're-review accepted a missing Agent' >&2
+            exit 1
+          fi
+          grep -q 're-review --agent <agent>' missing-re-review-agent.log
+          if gh shoal re-review --agent unsupported 2>unsupported-re-review-agent.log; then
+            echo 're-review accepted an unsupported Agent' >&2
+            exit 1
+          fi
+          grep -q 'unsupported Local AI Agent' unsupported-re-review-agent.log
