@@ -281,7 +281,7 @@ func (c reviewCommand) complete(ctx context.Context, node reviewRepository, item
 }
 
 func (c reviewCommand) completeJudgment(ctx context.Context, node reviewRepository, item pendingReview, result agentResult, eventType string) error {
-	if eventType != "REVIEWED" && eventType != "RE_REVIEWED" {
+	if !isJudgmentType(eventType, c.protocol) {
 		return errors.New("unsupported Review Judgment Event type")
 	}
 	starred, err := c.convergeStar(ctx, item.target, result.Verdict)
