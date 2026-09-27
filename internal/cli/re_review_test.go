@@ -222,7 +222,8 @@ func TestReReviewUsesStableTargetIDAfterRename(t *testing.T) {
 	if !strings.Contains(calls, "repositories/55") || !strings.Contains(calls, "Target: https://github.com/alice/renamed") {
 		t.Fatalf("stable identity was not used after rename: %s", calls)
 	}
-	if f.stars[renamed.FullName] || !strings.Contains(strings.Join(f.bodies(1), "\n"), `"targetRepositoryFullName":"alice/renamed"`) {
+	bodies := strings.Join(f.bodies(1), "\n")
+	if f.stars[renamed.FullName] || !strings.Contains(bodies, `"targetRepositoryFullName":"alice/renamed"`) || !strings.Contains(bodies, `"type":"STAR_REVOKED"`) {
 		t.Fatalf("renamed Target did not converge through current identity: stars=%v bodies=%v", f.stars, f.bodies(1))
 	}
 }
@@ -251,10 +252,13 @@ func TestReReviewBatchesFiveAndIsolatesMissingResult(t *testing.T) {
 	if f.agentCalls != 2 || f.state(5) != "open" {
 		t.Fatalf("wrong batching/retry state: calls=%d issue5=%s", f.agentCalls, f.state(5))
 	}
-	for _, n := range []int{1, 2, 3, 4, 6} {
+	for _, n := range []int{1, 2, 3, 4} {
 		if f.state(n) != "closed" || !strings.Contains(strings.Join(f.bodies(n), "\n"), `"type":"RE_REVIEWED"`) {
 			t.Fatalf("independent Issue #%d did not complete: state=%s bodies=%v", n, f.state(n), f.bodies(n))
 		}
+	}
+	if f.state(6) != "closed" || !strings.Contains(strings.Join(f.bodies(6), "\n"), `"type":"STAR_REVOKED"`) {
+		t.Fatalf("FAIL Re-review did not record STAR_REVOKED: state=%s bodies=%v", f.state(6), f.bodies(6))
 	}
 }
 
@@ -379,5 +383,91 @@ func TestReReviewStarMutationFailureLeavesPendingThreadRetryable(t *testing.T) {
 	}
 	if f.state(1) != "closed" || !f.stars[f.target.FullName] || !strings.Contains(strings.Join(f.bodies(1), "\n"), `"type":"RE_REVIEWED"`) {
 		t.Fatalf("retry did not converge: state=%s stars=%v bodies=%v", f.state(1), f.stars, f.bodies(1))
+	}
+}
+
+func judgmentComment(t *testing.T, target reviewRepository, eventType, verdict string, targetCommit, policyCommit string) reviewComment {
+	starred := verdict == "PASS"
+	return reviewComment{
+		ID:   20,
+		User: reviewUser{ID: 1, Login: "reviewer", Type: "User"},
+		Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{
+			Type:                     eventType,
+			ReviewerNodeID:           11,
+			TargetRepositoryID:       target.ID,
+			TargetRepositoryFullName: target.FullName,
+			TargetDefaultBranch:      target.DefaultBranch,
+			TargetCommit:             targetCommit,
+			ReviewPolicyPath:         "README.md",
+			ReviewPolicyCommit:       policyCommit,
+			Verdict:                  verdict,
+			ActualStarState:          &starred,
+			ReviewedAt:               "2026-09-27T05:30:00Z",
+		}),
+	}
+}
+
+func TestReReviewFailEmitsStarRevoked(t *testing.T) {
+	f := newReReviewFake()
+	f.addIssue(1, reviewBody("project"), f.requester.Owner)
+	f.issues[0].State = "closed"
+	f.comments[1] = []reviewComment{admissionFor(t, f.target, "project"), priorJudgment(t, f.target, "PASS")}
+	f.heads[f.target.ID] = testSHA2
+	f.stars[f.target.FullName] = true
+	f.agentOutput = `[{"issue":1,"verdict":"FAIL","comment":"No longer meets policy."}]`
+	if err := f.command(t).executeReReview(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	bodies := strings.Join(f.bodies(1), "\n")
+	if !strings.Contains(bodies, `"type":"STAR_REVOKED"`) || strings.Contains(bodies, `"type":"RE_REVIEWED","reviewerNodeId":11,"targetRepositoryId":55`) {
+		t.Fatalf("FAIL Re-review used wrong Judgment type: %s", bodies)
+	}
+	if f.stars[f.target.FullName] {
+		t.Fatal("FAIL Re-review did not remove Star")
+	}
+}
+
+func TestReReviewLatestStarRevokedRemainsAuthoritative(t *testing.T) {
+	f := newReReviewFake()
+	f.addIssue(1, reviewBody("project"), f.requester.Owner)
+	f.issues[0].State = "closed"
+	f.comments[1] = []reviewComment{
+		admissionFor(t, f.target, "project"),
+		priorJudgment(t, f.target, "PASS"),
+		judgmentComment(t, f.target, "STAR_REVOKED", "FAIL", testSHA2, testSHA1),
+	}
+	f.heads[f.target.ID] = testSHA2
+	f.policy = testSHA1
+	f.stars[f.target.FullName] = false
+	if err := f.command(t).executeReReview(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.agentCalls != 0 || f.stars[f.target.FullName] {
+		t.Fatalf("latest STAR_REVOKED was not authoritative: agent=%d stars=%v calls=%v", f.agentCalls, f.stars, f.calls)
+	}
+	for _, call := range f.calls {
+		if strings.Contains(call, "--method PUT user/starred/alice/project") {
+			t.Fatalf("older PASS incorrectly restored Star: %v", f.calls)
+		}
+	}
+}
+
+func TestReReviewLatestRevokedExternallyIsUsableJudgment(t *testing.T) {
+	f := newReReviewFake()
+	f.addIssue(1, reviewBody("project"), f.requester.Owner)
+	f.issues[0].State = "closed"
+	f.comments[1] = []reviewComment{
+		admissionFor(t, f.target, "project"),
+		priorJudgment(t, f.target, "PASS"),
+		judgmentComment(t, f.target, "REVOKED_EXTERNALLY", "FAIL", testSHA2, testSHA1),
+	}
+	f.heads[f.target.ID] = testSHA2
+	f.policy = testSHA1
+	f.stars[f.target.FullName] = false
+	if err := f.command(t).executeReReview(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.agentCalls != 0 || f.stars[f.target.FullName] {
+		t.Fatalf("latest REVOKED_EXTERNALLY was not consumed as usable Judgment: agent=%d stars=%v", f.agentCalls, f.stars)
 	}
 }

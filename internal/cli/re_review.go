@@ -145,7 +145,11 @@ func (c reviewCommand) reReview(ctx context.Context, agent string) error {
 				problems = append(problems, fmt.Errorf("Issue #%d: Re-review candidate changed unexpectedly", item.issue.Number))
 				continue
 			}
-			if e = c.completeJudgment(ctx, node, item, result, "RE_REVIEWED"); e != nil {
+			eventType := "RE_REVIEWED"
+			if result.Verdict == "FAIL" {
+				eventType = "STAR_REVOKED"
+			}
+			if e = c.completeJudgment(ctx, node, item, result, eventType); e != nil {
 				problems = append(problems, fmt.Errorf("Issue #%d: %w", item.issue.Number, e))
 			}
 		}
@@ -231,7 +235,7 @@ func (c reviewCommand) inspectReReviewCandidate(ctx context.Context, node review
 			return zero, false, errors.New("conflicting formal Review Event Target identities")
 		}
 		eventTargetID = event.TargetRepositoryID
-		if (event.Type == "REVIEWED" || event.Type == "RE_REVIEWED") && event.ActualStarState != nil && *event.ActualStarState == (event.Verdict == "PASS") {
+		if isJudgmentType(event.Type, c.protocol) && event.ActualStarState != nil && *event.ActualStarState == (event.Verdict == "PASS") {
 			copy := event
 			lastJudgment = &copy
 			pending = nil
@@ -312,4 +316,13 @@ func (c reviewCommand) reconcilePreviousJudgment(ctx context.Context, node revie
 		}
 	}
 	return nil
+}
+
+func isJudgmentType(eventType string, p reviewContract) bool {
+	for _, judgmentType := range p.Event.JudgmentTypes {
+		if eventType == judgmentType {
+			return true
+		}
+	}
+	return false
 }

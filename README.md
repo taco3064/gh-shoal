@@ -69,8 +69,9 @@ prior basis and compares the current Target default-branch HEAD plus the current
 `README.md` Review Policy commit. Threads with a changed basis are revalidated
 again immediately before semantic judgment and then processed through the same
 FIFO batches of at most five and the same Agent result contract as Automated
-Review. A successful semantic Re-review records a protocol-valid `RE_REVIEWED`
-Judgment using the judgment-start Target and Policy commits.
+Review. A successful semantic Re-review records the Protocol-defined Judgment
+type using the judgment-start Target and Policy commits: PASS records
+`RE_REVIEWED`, while FAIL that revokes the endorsement records `STAR_REVOKED`.
 
 When the Review Basis has not changed, `re-review` does not ask the Agent for a
 new judgment. Instead, it verifies endorsement state against the latest usable
