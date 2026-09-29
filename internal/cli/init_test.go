@@ -44,7 +44,7 @@ func TestPreconditionStopsBeforeMutation(t *testing.T){
  })}
 }
 
-func TestCanonicalNoDiffDoesNotMutateActionsOrGit(t *testing.T){
+func TestCanonicalNoDiffDoesNotMutateGitOrActiveWorkflow(t *testing.T){
  dir:=t.TempDir()
  contents:=map[string][]byte{}
  for _,path:=range managedPaths{
@@ -76,6 +76,7 @@ func TestCanonicalNoDiffDoesNotMutateActionsOrGit(t *testing.T){
     switch args[1]{
     case "user":return []byte(`{"id":42}`),nil
     case "repos/reviewer/shoal-station":return []byte(`{"id":99,"full_name":"reviewer/shoal-station","fork":true,"default_branch":"main","has_issues":true,"owner":{"id":42,"type":"User"},"parent":{"id":1379044983}}`),nil
+    case "repos/reviewer/shoal-station/actions/workflows/reviewer-summary.yml":return []byte(`{"id":123,"path":".github/workflows/reviewer-summary.yml","state":"active"}`),nil
     case "repositories/1379044983":return []byte(`{"id":1379044983,"full_name":"root/shoal-station","default_branch":"main"}`),nil
     case "repos/root/shoal-station/git/ref/heads/main":return []byte(`{"object":{"sha":"`+head+`"}}`),nil
     }
@@ -91,9 +92,76 @@ func TestCanonicalNoDiffDoesNotMutateActionsOrGit(t *testing.T){
  }}
  if err:=c.execute(context.Background(),nil);err!=nil{t.Fatal(err)}
  for _,call:=range calls{
-  if strings.Contains(call,"actions/")||strings.Contains(call,"--method")||strings.Contains(call," commit ")||strings.Contains(call," push "){t.Errorf("unexpected side effect or Actions readiness inference: %s",call)}
+  if strings.Contains(call,"--method")||strings.Contains(call," commit ")||strings.Contains(call," push "){t.Errorf("unexpected side effect or Actions readiness inference: %s",call)}
  }
  after,err:=os.ReadFile(filepath.Join(dir,"README.md"));if err!=nil||string(after)!=string(readme){t.Fatalf("README changed: %v",err)}
+}
+
+func TestEnsureSummaryWorkflow(t *testing.T) {
+	node := repository{ID: 99, FullName: "reviewer/shoal-station"}
+	const canonical = `{"id":123,"path":".github/workflows/reviewer-summary.yml","state":"active"}`
+	const disabled = `{"id":123,"path":".github/workflows/reviewer-summary.yml","state":"disabled_fork"}`
+	cases := []struct {
+		name, initial, verified                        string
+		readError, enableError, verifyError, wantError bool
+		writes                                         int
+	}{
+		{name: "already active", initial: canonical},
+		{name: "disabled then active", initial: disabled, verified: canonical, writes: 1},
+		{name: "missing workflow", readError: true, wantError: true},
+		{name: "unreadable state", initial: `{"id":123,"path":".github/workflows/reviewer-summary.yml"}`, wantError: true},
+		{name: "wrong path", initial: `{"id":123,"path":".github/workflows/other.yml","state":"disabled_fork"}`, wantError: true},
+		{name: "missing ID", initial: `{"path":".github/workflows/reviewer-summary.yml","state":"disabled_fork"}`, wantError: true},
+		{name: "enable fails", initial: disabled, enableError: true, wantError: true, writes: 1},
+		{name: "verification read fails", initial: disabled, verifyError: true, wantError: true, writes: 1},
+		{name: "still disabled", initial: disabled, verified: disabled, wantError: true, writes: 1},
+		{name: "verified wrong identity", initial: disabled, verified: `{"id":124,"path":".github/workflows/reviewer-summary.yml","state":"active"}`, wantError: true, writes: 1},
+		{name: "verified wrong path", initial: disabled, verified: `{"id":123,"path":".github/workflows/other.yml","state":"active"}`, wantError: true, writes: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reads, writes := 0, 0
+			c := initCommand{run: func(_ context.Context, program string, args ...string) ([]byte, error) {
+				if program != "gh" {
+					t.Fatalf("unexpected program %s", program)
+				}
+				locator := "repos/reviewer/shoal-station/actions/workflows/reviewer-summary.yml"
+				byID := "repos/reviewer/shoal-station/actions/workflows/123"
+				switch strings.Join(args, "\x00") {
+				case "api\x00" + locator:
+					reads++
+					if tc.readError {
+						return nil, errors.New("unavailable")
+					}
+					return []byte(tc.initial), nil
+				case "api\x00--method\x00PUT\x00" + byID + "/enable":
+					if reads != 1 {
+						t.Fatal("enable before canonical read")
+					}
+					writes++
+					if tc.enableError {
+						return nil, errors.New("denied")
+					}
+					return nil, nil
+				case "api\x00" + byID:
+					if writes != 1 {
+						t.Fatal("verification before enable")
+					}
+					if tc.verifyError {
+						return nil, errors.New("unavailable")
+					}
+					return []byte(tc.verified), nil
+				default:
+					t.Fatalf("unexpected API call: %v", args)
+					return nil, nil
+				}
+			}}
+			err := c.ensureSummaryWorkflow(context.Background(), node)
+			if (err != nil) != tc.wantError || writes != tc.writes {
+				t.Fatalf("error=%v writes=%d, wantError=%v writes=%d", err, writes, tc.wantError, tc.writes)
+			}
+		})
+	}
 }
 
 func TestEnsureIssues(t *testing.T) {
@@ -189,6 +257,9 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 	issuesEnabled := false
 	failPatch := true
 	writes := 0
+	workflowActive := false
+	failEnable := true
+	workflowWrites := 0
 	c := initCommand{dir: dir, run: func(ctx context.Context, program string, args ...string) ([]byte, error) {
 		if program == "git" {
 			if len(args) >= 5 && args[2] == "remote" && args[3] == "get-url" {
@@ -208,6 +279,12 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 				return []byte(`{"id":42}`), nil
 			case "repos/reviewer/shoal-station":
 				return json.Marshal(map[string]any{"id": 99, "has_issues": issuesEnabled, "full_name": "reviewer/shoal-station", "fork": true, "owner": map[string]any{"id": 42, "type": "User"}, "parent": map[string]any{"id": rootID}})
+			case "repos/reviewer/shoal-station/actions/workflows/reviewer-summary.yml", "repos/reviewer/shoal-station/actions/workflows/123":
+				state := "disabled_fork"
+				if workflowActive {
+					state = "active"
+				}
+				return json.Marshal(map[string]any{"id": 123, "path": summaryPath, "state": state})
 			case "repositories/1379044983":
 				return []byte(`{"id":1379044983,"full_name":"root/shoal-station","default_branch":"main"}`), nil
 			case "repos/root/shoal-station/git/ref/heads/main":
@@ -221,6 +298,14 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 				}
 				return json.Marshal(map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString(contents[path])})
 			}
+		}
+		if strings.Join(args, "\x00") == "api\x00--method\x00PUT\x00repos/reviewer/shoal-station/actions/workflows/123/enable" {
+			workflowWrites++
+			if failEnable {
+				return nil, errors.New("workflow enable denied")
+			}
+			workflowActive = true
+			return nil, nil
 		}
 		expected := []string{"api", "--method", "PATCH", "repos/reviewer/shoal-station", "-F", "has_issues=true"}
 		if strings.Join(args, "\x00") != strings.Join(expected, "\x00") {
@@ -247,14 +332,24 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 		t.Fatalf("successful sync not pushed: %s", got)
 	}
 	failPatch = false
+	if err := c.execute(ctx, nil); err == nil {
+		t.Fatal("second init should fail at workflow enablement")
+	}
+	if got := git("rev-parse", "HEAD"); got != synced {
+		t.Fatalf("workflow failure undid successful sync: %s", got)
+	}
+	if !issuesEnabled || workflowWrites != 1 {
+		t.Fatalf("prior Issues repair or workflow attempt missing: issues=%v writes=%d", issuesEnabled, workflowWrites)
+	}
+	failEnable = false
 	if err := c.execute(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := git("rev-parse", "HEAD"); got != synced {
 		t.Fatalf("retry created unnecessary commit: %s", got)
 	}
-	if writes != 2 || !issuesEnabled {
-		t.Fatalf("Issues retry failed: writes=%d enabled=%v", writes, issuesEnabled)
+	if writes != 2 || !issuesEnabled || workflowWrites != 2 || !workflowActive {
+		t.Fatalf("repair retry failed: issuesWrites=%d enabled=%v workflowWrites=%d active=%v", writes, issuesEnabled, workflowWrites, workflowActive)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "README.md")); err != nil || string(got) != string(readme) {
 		t.Fatalf("README changed: %v", err)

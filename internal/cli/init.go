@@ -98,10 +98,44 @@ func (c initCommand) execute(ctx context.Context,args []string) error {
   if err=c.sync(ctx,pre,remote,contents);err!=nil{return err}
  }
  if err=c.ensureIssues(ctx,node);err!=nil{return err}
+ if err=c.ensureSummaryWorkflow(ctx,node);err!=nil{return err}
  if err=c.validateNode(node,viewer.ID);err!=nil{return err}
  if _,err=c.call(ctx,"gh","auth","status");err!=nil{return err}
  for _,path:=range managedPaths{b,e:=os.ReadFile(filepath.Join(c.dir,path));if e!=nil||!bytes.Equal(b,contents[path]){return fmt.Errorf("managed file %s failed post-init verification: %w",path,e)}}
  return c.clean(ctx)
+}
+type workflow struct {
+	ID    int64  `json:"id"`
+	Path  string `json:"path"`
+	State string `json:"state"`
+}
+
+func (c initCommand) ensureSummaryWorkflow(ctx context.Context, node repository) error {
+	// Resolve by the canonical file name, then bind the returned workflow to its
+	// exact path before using its numeric GitHub identity for any mutation.
+	endpoint := "repos/" + node.FullName + "/actions/workflows/reviewer-summary.yml"
+	var current workflow
+	if err := c.api(ctx, endpoint, &current); err != nil {
+		return fmt.Errorf("cannot resolve canonical Reviewer Summary Workflow: %w", err)
+	}
+	if current.ID <= 0 || current.Path != summaryPath || current.State == "" {
+		return errors.New("cannot verify canonical Reviewer Summary Workflow identity or state")
+	}
+	if current.State == "active" {
+		return nil
+	}
+	byID := fmt.Sprintf("repos/%s/actions/workflows/%d", node.FullName, current.ID)
+	if _, err := c.call(ctx, "gh", "api", "--method", "PUT", byID+"/enable"); err != nil {
+		return fmt.Errorf("cannot enable canonical Reviewer Summary Workflow: %w", err)
+	}
+	var verified workflow
+	if err := c.api(ctx, byID, &verified); err != nil {
+		return fmt.Errorf("cannot verify canonical Reviewer Summary Workflow after enablement: %w", err)
+	}
+	if verified.ID != current.ID || verified.Path != summaryPath || verified.State != "active" {
+		return errors.New("canonical Reviewer Summary Workflow is not active or cannot be verified")
+	}
+	return nil
 }
 func (c initCommand) ensureIssues(ctx context.Context, node repository) error {
 	var current repository
