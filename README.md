@@ -34,8 +34,13 @@ with the fork's remote `main`, while authenticated as the fork owner with `gh au
 It synchronizes the canonical Issue Form and Summary Workflow, preserves your
 `README.md` policy, and commits and pushes only if either managed file changes.
 On a fresh fork, the owner must first open the fork's Actions page and confirm
-GitHub's workflow enablement prompt. `init` does not enable Actions or workflows;
-its success confirms station file synchronization, not workflow execution readiness.
+GitHub's workflow enablement prompt. `init` also ensures Issues are enabled and
+repairs the GitHub workflow state of the canonical
+`.github/workflows/reviewer-summary.yml` if it is inactive. It enables only that
+workflow and verifies it is active. `init` does not enable repository-level
+Actions or change Actions policy. A successful `init` confirms managed file,
+Issues, and canonical workflow-state repair; it does not prove that the manual
+Actions confirmation happened or that a workflow run will execute successfully.
 
 Run Automated Review from a clean local Reviewer Node checkout, authenticated as
 the fork owner:
