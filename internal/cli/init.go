@@ -67,6 +67,7 @@ func (c initCommand) execute(ctx context.Context,args []string) error {
   locator,e:=repositoryLocator(raw);if e!=nil{continue}
   var candidate repository
   if e=c.api(ctx,"repos/"+locator,&candidate);e!=nil{return e}
+  if candidate.ID==rootID&&candidate.Owner.Type=="User"&&candidate.Owner.ID==viewer.ID {return errors.New("Network Root is the canonical source and a valid Root-owner Reviewer Node; init only synchronizes direct forks")}
   if candidate.ID!=rootID&&candidate.Fork&&candidate.Parent!=nil&&candidate.Parent.ID==rootID&&candidate.Owner.Type=="User"&&candidate.Owner.ID==viewer.ID {
    if remote!=""&&node.ID!=candidate.ID{return errors.New("multiple eligible Reviewer Node remotes")}
    remote=name;node=candidate

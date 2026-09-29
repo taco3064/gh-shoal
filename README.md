@@ -43,7 +43,9 @@ Issues, and canonical workflow-state repair; it does not prove that the manual
 Actions confirmation happened or that a workflow run will execute successfully.
 
 Run Automated Review from a clean local Reviewer Node checkout, authenticated as
-the fork owner:
+its Personal Account owner. The canonical Network Root is the root owner's
+Reviewer Node; other Reviewers use a direct fork. `gh shoal init` remains a
+direct-fork synchronization command and must not run against the Network Root:
 
 ```bash
 gh shoal review --agent codex

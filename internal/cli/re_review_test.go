@@ -44,6 +44,9 @@ func (f *reReviewFake) run(ctx context.Context, program string, args ...string) 
 			return nil, nil
 		}
 		endpoint := args[1]
+		if endpoint == fmt.Sprintf("repositories/%d", rootID) {
+			return f.fakeReview.run(ctx, program, args...)
+		}
 		if strings.HasPrefix(endpoint, "repositories/") {
 			id, err := strconv.ParseInt(strings.TrimPrefix(endpoint, "repositories/"), 10, 64)
 			if err != nil {
@@ -136,6 +139,42 @@ func TestReReviewRequiresExplicitSupportedAgentBeforeSideEffects(t *testing.T) {
 	}
 	if len(f.calls) != 0 {
 		t.Fatalf("command caused side effects before Agent validation: %v", f.calls)
+	}
+}
+
+func TestRootOwnerReReviewAndRequesterRevalidation(t *testing.T) {
+	f := newReReviewFake()
+	f.node = f.root
+	f.addIssue(1, reviewBody("project"), f.requester.Owner)
+	f.issues[0].State = "closed"
+	f.comments[1] = []reviewComment{
+		{ID: 10, User: f.root.Owner, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{ReviewerNodeID: rootID, TargetRepositoryID: f.target.ID, RepositoryName: "project"})},
+		{ID: 11, User: f.root.Owner, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: rootID, TargetRepositoryID: f.target.ID, TargetRepositoryFullName: f.target.FullName, TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"})},
+	}
+	f.heads[f.target.ID] = testSHA2
+	f.agentOutput = `[{"issue":1,"verdict":"PASS","comment":"Updated evidence."}]`
+	if err := f.command(t).executeReReview(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.state(1) != "closed" || !strings.Contains(strings.Join(f.bodies(1), ""), `"type":"RE_REVIEWED"`) || !strings.Contains(strings.Join(f.bodies(1), ""), fmt.Sprintf(`"reviewerNodeId":%d`, rootID)) {
+		t.Fatalf("root Re-review failed: %v", f.bodies(1))
+	}
+}
+
+func TestReReviewRevalidatesRootOwnerRequester(t *testing.T) {
+	f := newReReviewFake()
+	f.requester = f.root
+	f.target = reviewRepository{ID: 55, FullName: "root/project", Name: "project", DefaultBranch: "main", Owner: f.root.Owner}
+	f.targets[f.target.ID] = f.target
+	f.heads[f.target.ID] = testSHA1
+	f.addIssue(1, reviewBody("project"), f.root.Owner)
+	f.issues[0].State = "closed"
+	f.comments[1] = []reviewComment{admissionFor(t, f.target, "project"), priorJudgment(t, f.target, "PASS")}
+	if err := f.command(t).executeReReview(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.state(1) != "closed" || f.agentCalls != 0 {
+		t.Fatalf("root requester revalidation disrupted maintenance: %v", f.calls)
 	}
 }
 

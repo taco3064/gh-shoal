@@ -43,6 +43,7 @@ func TestReviewRequestParsing(t *testing.T) {
 type fakeReview struct {
 	node         reviewRepository
 	requester    reviewRepository
+	root         reviewRepository
 	target       reviewRepository
 	issues       []reviewIssue
 	comments     map[int][]reviewComment
@@ -66,7 +67,7 @@ func fixture() *fakeReview {
 		ID int64 `json:"id"`
 	}{ID: rootID}}
 	target := reviewRepository{ID: 55, FullName: "alice/project", Name: "project", DefaultBranch: "main", Owner: requester.Owner}
-	return &fakeReview{node: node, requester: requester, target: target, head: testSHA1, policy: testSHA1, comments: map[int][]reviewComment{}}
+	return &fakeReview{node: node, requester: requester, root: reviewRepository{ID: rootID, FullName: "root/shoal-station", Owner: reviewUser{ID: 4, Login: "root", Type: "User"}}, target: target, head: testSHA1, policy: testSHA1, comments: map[int][]reviewComment{}}
 }
 func (f *fakeReview) addIssue(number int, body string, user reviewUser) {
 	f.issues = append(f.issues, reviewIssue{Number: number, State: "open", Body: body, User: user})
@@ -88,7 +89,7 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 			return []byte("origin\n"), nil
 		}
 		if strings.HasSuffix(command, "remote get-url origin") {
-			return []byte("https://github.com/reviewer/shoal-station.git\n"), nil
+			return []byte("https://github.com/" + f.node.FullName + ".git\n"), nil
 		}
 	}
 	if program == "codex" || program == "claude" || program == "gemini" || program == "opencode" || program == "cursor-agent" || program == "grok" || program == "qwen" || program == "kimi" {
@@ -123,11 +124,11 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		}
 		field := args[5]
 		var number int
-		if _, e := fmt.Sscanf(endpoint, "repos/reviewer/shoal-station/issues/%d", &number); e != nil {
+		if _, e := fmt.Sscanf(endpoint, "repos/"+f.node.FullName+"/issues/%d", &number); e != nil {
 			return nil, e
 		}
 		if strings.HasSuffix(endpoint, "/comments") {
-			if _, e := fmt.Sscanf(endpoint, "repos/reviewer/shoal-station/issues/%d/comments", &number); e != nil {
+			if _, e := fmt.Sscanf(endpoint, "repos/"+f.node.FullName+"/issues/%d/comments", &number); e != nil {
 				return nil, e
 			}
 			f.comments[number] = append(f.comments[number], reviewComment{ID: int64(100 + len(f.calls)), Body: strings.TrimPrefix(field, "body="), User: f.node.Owner})
@@ -154,13 +155,13 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		return nil, errors.New("HTTP 404: Not Found")
 	case endpoint == "user":
 		value = f.node.Owner
-	case endpoint == "repos/reviewer/shoal-station":
+	case endpoint == "repos/"+f.node.FullName:
 		value = f.node
-	case strings.HasPrefix(endpoint, "repos/reviewer/shoal-station/issues?"):
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/issues?"):
 		value = [][]reviewIssue{f.issues}
-	case strings.HasPrefix(endpoint, "repos/reviewer/shoal-station/issues/") && strings.Contains(endpoint, "/comments?"):
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/issues/") && strings.Contains(endpoint, "/comments?"):
 		var n int
-		_, _ = fmt.Sscanf(endpoint, "repos/reviewer/shoal-station/issues/%d", &n)
+		_, _ = fmt.Sscanf(endpoint, "repos/"+f.node.FullName+"/issues/%d", &n)
 		value = [][]reviewComment{f.comments[n]}
 	case strings.HasPrefix(endpoint, "users/bob/repos?"):
 		value = [][]reviewRepository{{{ID: 13, FullName: "bob/shoal-station", Fork: true, Owner: reviewUser{ID: 3, Login: "bob", Type: "User"}, Parent: &struct {
@@ -172,9 +173,13 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		}{ID: rootID}}
 	case strings.HasPrefix(endpoint, "users/reviewer/repos?"):
 		value = [][]reviewRepository{{f.node}}
+	case strings.HasPrefix(endpoint, "users/root/repos?"):
+		value = [][]reviewRepository{{}}
+	case endpoint == fmt.Sprintf("repositories/%d", rootID):
+		value = f.root
 	case strings.HasPrefix(endpoint, "users/alice/repos?"):
 		value = [][]reviewRepository{{f.requester}}
-	case endpoint == "repos/alice/shoal-station":
+	case endpoint == "repos/"+f.requester.FullName:
 		value = f.requester
 	case endpoint == "repos/alice/other":
 		other := f.target
@@ -188,6 +193,8 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		own := f.target
 		own.Owner = f.node.Owner
 		value = own
+	case endpoint == "repos/root/project":
+		value = f.target
 	case endpoint == "repos/bob/project":
 		value = f.target
 	case endpoint == "repos/alice/project" || endpoint == "repos/alice/renamed":
@@ -206,7 +213,7 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 		value = map[string]any{"commit": map[string]any{"sha": f.head}}
 	case strings.HasPrefix(endpoint, "repos/alice/project-") && strings.Contains(endpoint, "/branches/"):
 		value = map[string]any{"commit": map[string]any{"sha": f.head}}
-	case strings.HasPrefix(endpoint, "repos/reviewer/shoal-station/commits?"):
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/commits?"):
 		value = []map[string]string{{"sha": f.policy}}
 	default:
 		return nil, fmt.Errorf("unexpected GitHub endpoint: %s", endpoint)
@@ -282,7 +289,6 @@ func TestMembershipRequiresDirectPersonalForkAndAuthor(t *testing.T) {
 		alter func(*fakeReview)
 	}{
 		{"no fork", func(f *fakeReview) { f.requester.Fork = false }},
-		{"root itself", func(f *fakeReview) { f.requester.ID = rootID }},
 		{"organization", func(f *fakeReview) { f.requester.Owner.Type = "Organization" }},
 		{"downstream source root", func(f *fakeReview) { f.requester.Parent.ID = 99 }},
 		{"different owner", func(f *fakeReview) { f.requester.Owner.ID = 3 }},
@@ -297,6 +303,86 @@ func TestMembershipRequiresDirectPersonalForkAndAuthor(t *testing.T) {
 				t.Fatalf("invalid membership admitted: %+v", f)
 			}
 		})
+	}
+}
+
+func TestReviewerNodeMembershipBranches(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*reviewRepository)
+		valid  bool
+	}{
+		{"direct fork", func(*reviewRepository) {}, true},
+		{"root", func(r *reviewRepository) { r.ID = rootID; r.Fork = false; r.Parent = nil }, true},
+		{"organization root", func(r *reviewRepository) { r.ID = rootID; r.Owner.Type = "Organization" }, false},
+		{"organization fork", func(r *reviewRepository) { r.Owner.Type = "Organization" }, false},
+		{"downstream with root source", func(r *reviewRepository) { r.Parent.ID = 99 }, false},
+		{"unrelated nonfork", func(r *reviewRepository) { r.Fork = false }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := fixture().requester
+			tc.change(&r)
+			if got := reviewerNodeMembership(r); got != tc.valid {
+				t.Fatalf("membership = %t, want %t", got, tc.valid)
+			}
+		})
+	}
+	var downstream reviewRepository
+	if err := json.Unmarshal([]byte(fmt.Sprintf(`{"id":93,"fork":true,"owner":{"id":2,"type":"User"},"parent":{"id":88},"source":{"id":%d}}`, rootID)), &downstream); err != nil {
+		t.Fatal(err)
+	}
+	if reviewerNodeMembership(downstream) {
+		t.Fatal("source.id established downstream Membership")
+	}
+}
+
+func TestRootOwnerRequesterAdmissionAndSelfReview(t *testing.T) {
+	f := fixture()
+	f.requester = f.root
+	f.target = reviewRepository{ID: 55, FullName: "root/project", Name: "project", DefaultBranch: "main", Owner: f.root.Owner}
+	f.addIssue(1, reviewBody("project"), f.root.Owner)
+	// The requester identity must bind to the canonical root ID, not a fork
+	// sharing its source or an owner/name guess.
+	requester, err := f.command(t).requesterNode(context.Background(), f.root.Owner)
+	if err != nil || requester.ID != rootID {
+		t.Fatalf("root owner requester = %+v, %v", requester, err)
+	}
+	f.root.Owner.Type = "Organization"
+	requester, err = f.command(t).requesterNode(context.Background(), f.root.Owner)
+	if err != nil || requester.ID != 0 {
+		t.Fatalf("organization root requester = %+v, %v", requester, err)
+	}
+	f.root.Owner.Type = "User"
+	f.node = f.root
+	if err := f.command(t).admit(context.Background(), f.node, f.issues[0], f.issues); err != nil {
+		t.Fatal(err)
+	}
+	if f.state(1) != "closed" || !strings.Contains(strings.Join(f.bodies(1), ""), "cannot review their own") {
+		t.Fatalf("root self-review was admitted: %v", f.bodies(1))
+	}
+}
+
+func TestRootOwnerRequestAdmittedByDirectForkReviewer(t *testing.T) {
+	f := fixture()
+	f.requester = f.root
+	f.target = reviewRepository{ID: 55, FullName: "root/project", Name: "project", DefaultBranch: "main", Owner: f.root.Owner}
+	f.addIssue(1, reviewBody("project"), f.root.Owner)
+	f.process(t)
+	if f.state(1) != "open" || !strings.Contains(strings.Join(f.bodies(1), ""), fmt.Sprintf(`"reviewerNodeId":%d`, f.node.ID)) {
+		t.Fatalf("root owner request not admitted: %v", f.bodies(1))
+	}
+}
+
+func TestRootOwnerCurrentReviewerAndAutomatedReview(t *testing.T) {
+	f := fixture()
+	f.node = f.root
+	f.addIssue(1, reviewBody("project"), f.requester.Owner)
+	f.agentOutput = `[{"issue":1,"verdict":"PASS","comment":"Root policy evidence."}]`
+	if err := f.automatedCommand(t).execute(context.Background(), []string{"--agent", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.state(1) != "closed" || !f.starred || !strings.Contains(strings.Join(f.bodies(1), ""), fmt.Sprintf(`"reviewerNodeId":%d`, rootID)) {
+		t.Fatalf("root review did not use root identity: %v", f.bodies(1))
 	}
 }
 func TestDuplicateAndReReviewBasis(t *testing.T) {
