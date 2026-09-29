@@ -127,43 +127,9 @@ func (c reviewCommand) execute(ctx context.Context, args []string) error {
 // admitOpen retains the milestone [05] admission path as the single source of
 // truth. Automated Review consumes its public admission records afterwards.
 func (c reviewCommand) admitOpen(ctx context.Context) error {
-	if _, err := c.run(ctx, "gh", "auth", "status"); err != nil {
-		return fmt.Errorf("gh auth is required: %w", err)
-	}
-	var viewer reviewUser
-	if err := c.api(ctx, "user", &viewer); err != nil {
-		return err
-	}
-	if viewer.ID <= 0 {
-		return errors.New("authenticated Reviewer has no GitHub user ID")
-	}
-	remotes, err := c.run(ctx, "git", "-C", c.dir, "remote")
+	node, err := c.currentReviewerNode(ctx)
 	if err != nil {
 		return err
-	}
-	var node reviewRepository
-	for _, remote := range strings.Fields(string(remotes)) {
-		raw, e := c.run(ctx, "git", "-C", c.dir, "remote", "get-url", remote)
-		if e != nil {
-			return e
-		}
-		locator, e := repositoryLocator(strings.TrimSpace(string(raw)))
-		if e != nil {
-			continue
-		}
-		var candidate reviewRepository
-		if e = c.api(ctx, "repos/"+locator, &candidate); e != nil {
-			return e
-		}
-		if candidate.ID != rootID && candidate.Fork && candidate.Parent != nil && candidate.Parent.ID == rootID && candidate.Owner.Type == "User" && candidate.Owner.ID == viewer.ID {
-			if node.ID != 0 && node.ID != candidate.ID {
-				return errors.New("multiple Reviewer Node remotes")
-			}
-			node = candidate
-		}
-	}
-	if node.ID == 0 || !repoName.MatchString(node.FullName) {
-		return errors.New("run review from a direct Personal Account Reviewer Node fork owned by the authenticated Reviewer")
 	}
 	var pages [][]reviewIssue
 	endpoint := "repos/" + node.FullName + "/issues?state=all&per_page=100"
@@ -202,6 +168,13 @@ func (c reviewCommand) requesterNode(ctx context.Context, user reviewUser) (revi
 	if user.ID <= 0 || !bareRepository.MatchString(user.Login) {
 		return empty, errors.New("requester identity is invalid")
 	}
+	var root reviewRepository
+	if err := c.api(ctx, fmt.Sprintf("repositories/%d", rootID), &root); err != nil {
+		return empty, err
+	}
+	if reviewerNodeMembership(root) && root.ID == rootID && root.Owner.ID == user.ID {
+		return root, nil
+	}
 	var pages [][]reviewRepository
 	if err := c.pages(ctx, "users/"+user.Login+"/repos?type=owner&per_page=100", &pages); err != nil {
 		return empty, err
@@ -215,7 +188,7 @@ func (c reviewCommand) requesterNode(ctx context.Context, user reviewUser) (revi
 			if err := c.api(ctx, "repos/"+item.FullName, &repo); err != nil {
 				return empty, err
 			}
-			if repo.Fork && repo.Parent != nil && repo.Parent.ID == rootID && repo.Owner.Type == "User" && repo.Owner.ID == user.ID && repo.ID != rootID {
+			if reviewerNodeMembership(repo) && repo.ID != rootID && repo.Owner.ID == user.ID {
 				return repo, nil
 			}
 		}
@@ -251,7 +224,7 @@ func (c reviewCommand) admit(ctx context.Context, node reviewRepository, issue r
 		return err
 	}
 	if requester.ID == 0 {
-		return c.invalid(ctx, node, issue, "the Issue author has no direct Personal Account fork of the Network Root")
+		return c.invalid(ctx, node, issue, "the Issue author has no Personal Account-owned Network Root or direct fork Reviewer Node")
 	}
 	target, exists, err := c.target(ctx, issue.User.Login, name)
 	if err != nil {

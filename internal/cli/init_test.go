@@ -44,6 +44,42 @@ func TestPreconditionStopsBeforeMutation(t *testing.T){
  })}
 }
 
+func TestInitRefusesPersonalNetworkRootAsSynchronizationTarget(t *testing.T) {
+	var calls []string
+	c := initCommand{dir: t.TempDir(), run: func(_ context.Context, program string, args ...string) ([]byte, error) {
+		call := program + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if program == "git" {
+			switch {
+			case strings.Contains(call, "symbolic-ref"):
+				return []byte("main"), nil
+			case strings.Contains(call, "status --porcelain"):
+				return nil, nil
+			case strings.Contains(call, "rev-parse HEAD"):
+				return []byte(strings.Repeat("a", 40)), nil
+			case strings.HasSuffix(call, " remote"):
+				return []byte("origin"), nil
+			case strings.HasSuffix(call, "remote get-url origin"):
+				return []byte("https://github.com/root/shoal-station.git"), nil
+			}
+		}
+		if call == "gh auth status" { return nil, nil }
+		if call == "gh api user" { return []byte(`{"id":42}`), nil }
+		if call == "gh api repos/root/shoal-station" { return []byte(`{"id":1379044983,"full_name":"root/shoal-station","owner":{"id":42,"type":"User"}}`), nil }
+		t.Fatalf("unexpected call: %s", call)
+		return nil, nil
+	}}
+	err := c.execute(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "canonical source") || !strings.Contains(err.Error(), "valid Root-owner Reviewer Node") {
+		t.Fatalf("wrong init refusal: %v", err)
+	}
+	for _, call := range calls {
+		if strings.Contains(call, "--method") || strings.Contains(call, "commit") || strings.Contains(call, "push") {
+			t.Fatalf("root init mutated repository: %s", call)
+		}
+	}
+}
+
 func TestCanonicalNoDiffDoesNotMutateGitOrActiveWorkflow(t *testing.T){
  dir:=t.TempDir()
  contents:=map[string][]byte{}

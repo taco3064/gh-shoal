@@ -49,37 +49,9 @@ func (c reviewCommand) automated(ctx context.Context, agent string) error {
 		return errors.New("review requires a clean Station index and working tree")
 	}
 	admissionErr := c.admitOpen(ctx)
-	var viewer reviewUser
-	if err = c.api(ctx, "user", &viewer); err != nil {
-		return err
-	}
-	remotes, err := c.run(ctx, "git", "-C", c.dir, "remote")
+	node, err := c.currentReviewerNode(ctx)
 	if err != nil {
 		return err
-	}
-	var node reviewRepository
-	for _, remote := range strings.Fields(string(remotes)) {
-		raw, e := c.run(ctx, "git", "-C", c.dir, "remote", "get-url", remote)
-		if e != nil {
-			return e
-		}
-		locator, e := repositoryLocator(strings.TrimSpace(string(raw)))
-		if e != nil {
-			continue
-		}
-		var candidate reviewRepository
-		if e = c.api(ctx, "repos/"+locator, &candidate); e != nil {
-			return e
-		}
-		if candidate.ID != rootID && candidate.Fork && candidate.Parent != nil && candidate.Parent.ID == rootID && candidate.Owner.Type == "User" && candidate.Owner.ID == viewer.ID {
-			if node.ID != 0 && node.ID != candidate.ID {
-				return errors.New("multiple Reviewer Node remotes")
-			}
-			node = candidate
-		}
-	}
-	if node.ID == 0 {
-		return errors.New("no eligible Reviewer Node remote")
 	}
 	var pages [][]reviewIssue
 	if err = c.pages(ctx, "repos/"+node.FullName+"/issues?state=open&per_page=100", &pages); err != nil {
