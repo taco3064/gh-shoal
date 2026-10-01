@@ -16,11 +16,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact candidate head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Setup Node for compatibility verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Checkout exact compatibility authority
+        uses: actions/checkout@v5
+        with:
+          repository: taco3064/shoal-app
+          ref: 01a58cbece4d2878231f5c4dc5783b54f4ec7aa8
+          path: compatibility-source
+
+      - name: Verify exact Platform correspondence
+        run: node script/compatibility.mjs compatibility-source
 
       - name: Test
         run: go test ./...
@@ -51,6 +72,21 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Setup Node for compatibility verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Checkout exact compatibility authority
+        uses: actions/checkout@v5
+        with:
+          repository: taco3064/shoal-app
+          ref: 01a58cbece4d2878231f5c4dc5783b54f4ec7aa8
+          path: compatibility-source
+
+      - name: Verify exact Platform correspondence
+        run: node script/compatibility.mjs compatibility-source
 
       - name: Verify release workflow configuration
         run: bash script/verify-release-workflow.sh
@@ -113,33 +149,15 @@ jobs:
         working-directory: gh-shoal
         run: ./${{ matrix.binary }} --help
 
-      - name: Install local extension through GitHub CLI
+      - name: Setup Node for installed command smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Exact-head unit and integration verification
         working-directory: gh-shoal
-        shell: bash
-        run: |
-          set -euo pipefail
-          export GH_CONFIG_DIR="${RUNNER_TEMP}/gh-config"
-          gh extension install .
-          gh shoal --help
-          gh shoal --help | grep -q review
-          gh shoal --help | grep -q re-review
-          if gh shoal review 2>missing-agent.log; then
-            echo 'review accepted a missing Agent' >&2
-            exit 1
-          fi
-          grep -q 'review --agent <agent>' missing-agent.log
-          if gh shoal review --agent unsupported 2>unsupported-agent.log; then
-            echo 'review accepted an unsupported Agent' >&2
-            exit 1
-          fi
-          grep -q 'unsupported Local AI Agent' unsupported-agent.log
-          if gh shoal re-review 2>missing-re-review-agent.log; then
-            echo 're-review accepted a missing Agent' >&2
-            exit 1
-          fi
-          grep -q 're-review --agent <agent>' missing-re-review-agent.log
-          if gh shoal re-review --agent unsupported 2>unsupported-re-review-agent.log; then
-            echo 're-review accepted an unsupported Agent' >&2
-            exit 1
-          fi
-          grep -q 'unsupported Local AI Agent' unsupported-re-review-agent.log
+        run: go test ./...
+
+      - name: Installed-extension compatibility and recovery smoke
+        working-directory: gh-shoal
+        run: node script/smoke-compatibility.mjs

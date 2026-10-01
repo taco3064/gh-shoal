@@ -76,3 +76,19 @@ the release-foundation work item.
 
 Close the release-foundation work item only after the main-stage distribution
 gate passes.
+
+## Compatibility provenance and command smoke
+
+Compatibility authority stays in `shoal-app`. Do not hand-edit a second matrix.
+`script/compatibility.mjs` generates the installed capability from the checked-in
+exact Platform source and review contract. CI and release must prove source
+commit, tree, committed-byte correspondence, and generated-snapshot equality
+before building/publishing. A capability update requires reviewed Platform source
+and runtime validation; component tags never decide compatibility.
+
+Exact-head command smoke runs `node script/smoke-compatibility.mjs` after native
+Go build. It installs through `gh extension install .` in isolated config/data/
+state directories and executes `init`, `review`, and `re-review` against controlled
+GitHub/Agent boundaries and native temporary Git repositories. Retain positive
+current/older generation execution, explicit migration, zero-mutation refusal,
+no-op, and partial-success recovery controls on every supported CI platform.

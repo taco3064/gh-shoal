@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,17 +58,19 @@ type fakeReview struct {
 	starred      bool
 	dirty        bool
 	agentDirties bool
+	managed      map[string][]byte
+	canonical    map[string][]byte
 }
 
 func fixture() *fakeReview {
-	node := reviewRepository{ID: 11, FullName: "reviewer/shoal-station", DefaultBranch: "main", Fork: true, Owner: reviewUser{ID: 1, Login: "reviewer", Type: "User"}, Parent: &struct {
+	node := reviewRepository{ID: 11, FullName: "reviewer/shoal-station", DefaultBranch: "main", HasIssues: boolPtr(true), Fork: true, Owner: reviewUser{ID: 1, Login: "reviewer", Type: "User"}, Parent: &struct {
 		ID int64 `json:"id"`
 	}{ID: rootID}}
 	requester := reviewRepository{ID: 12, FullName: "alice/shoal-station", Fork: true, Owner: reviewUser{ID: 2, Login: "alice", Type: "User"}, Parent: &struct {
 		ID int64 `json:"id"`
 	}{ID: rootID}}
 	target := reviewRepository{ID: 55, FullName: "alice/project", Name: "project", DefaultBranch: "main", Owner: requester.Owner}
-	return &fakeReview{node: node, requester: requester, root: reviewRepository{ID: rootID, FullName: "root/shoal-station", Owner: reviewUser{ID: 4, Login: "root", Type: "User"}}, target: target, head: testSHA1, policy: testSHA1, comments: map[int][]reviewComment{}}
+	return &fakeReview{node: node, requester: requester, root: reviewRepository{ID: rootID, FullName: "root/shoal-station", DefaultBranch: "main", HasIssues: boolPtr(true), Owner: reviewUser{ID: 4, Login: "root", Type: "User"}}, target: target, head: testSHA1, policy: testSHA1, comments: map[int][]reviewComment{}, managed: realManagedFixture(), canonical: realManagedFixture()}
 }
 func (f *fakeReview) addIssue(number int, body string, user reviewUser) {
 	f.issues = append(f.issues, reviewIssue{Number: number, State: "open", Body: body, User: user})
@@ -153,6 +156,29 @@ func (f *fakeReview) run(_ context.Context, program string, args ...string) ([]b
 			return nil, nil
 		}
 		return nil, errors.New("HTTP 404: Not Found")
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/git/ref/heads/") || strings.HasPrefix(endpoint, "repos/"+f.root.FullName+"/git/ref/heads/"):
+		value = map[string]any{"object": map[string]string{"sha": testSHA1}}
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/contents/") || strings.HasPrefix(endpoint, "repos/"+f.root.FullName+"/contents/"):
+		name := f.node.FullName
+		files := f.managed
+		if strings.HasPrefix(endpoint, "repos/"+f.root.FullName+"/contents/") && f.root.FullName != f.node.FullName {
+			name = f.root.FullName
+			files = f.canonical
+		}
+		path, _, _ := strings.Cut(strings.TrimPrefix(endpoint, "repos/"+name+"/contents/"), "?ref=")
+		b, ok := files[path]
+		if !ok {
+			return nil, errors.New("HTTP 404: Not Found")
+		}
+		value = map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString(b)}
+	case strings.HasPrefix(endpoint, "repos/"+f.node.FullName+"/issues/") && !strings.Contains(endpoint, "/comments"):
+		var n int
+		fmt.Sscanf(endpoint, "repos/"+f.node.FullName+"/issues/%d", &n)
+		for _, issue := range f.issues {
+			if issue.Number == n {
+				value = issue
+			}
+		}
 	case endpoint == "user":
 		value = f.node.Owner
 	case endpoint == "repos/"+f.node.FullName:

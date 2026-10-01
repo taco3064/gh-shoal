@@ -1,0 +1,19 @@
+name: Review Request
+description: Invite this Reviewer to review one of your repositories.
+title: Review Request
+body:
+  - type: input
+    id: repository-name
+    attributes:
+      label: Repository name
+      description: Name of a repository owned by your GitHub account (without the owner or URL).
+      placeholder: my-project
+    validations:
+      required: true
+  - type: textarea
+    id: invitation-message
+    attributes:
+      label: Invitation message
+      description: Optional message for the Reviewer.
+    validations:
+      required: false

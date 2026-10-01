@@ -40,6 +40,7 @@ type agentResult struct {
 }
 
 func (c reviewCommand) automated(ctx context.Context, agent string) error {
+	c.effects = new(int)
 	// Check before admission: admission itself may comment and close Issues.
 	status, err := c.run(ctx, "git", "-C", c.dir, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
@@ -49,6 +50,11 @@ func (c reviewCommand) automated(ctx context.Context, agent string) error {
 		return errors.New("review requires a clean Station index and working tree")
 	}
 	admissionErr := c.admitOpen(ctx)
+	// Preflight failures abort the entire run before completed-thread recovery.
+	var refusal diagnostic
+	if errors.As(admissionErr, &refusal) {
+		return admissionErr
+	}
 	node, err := c.currentReviewerNode(ctx)
 	if err != nil {
 		return err
@@ -162,6 +168,9 @@ func (c reviewCommand) automated(ctx context.Context, agent string) error {
 				problems = append(problems, fmt.Errorf("Issue #%d: %w", item.issue.Number, e))
 			}
 		}
+	}
+	if len(problems) == 0 && *c.effects == 0 {
+		report(c.out, "NO_CHANGES", "No pending Review work", "No lifecycle mutation or semantic judgment was needed.")
 	}
 	return errors.Join(problems...)
 }
@@ -290,13 +299,16 @@ func (c reviewCommand) convergeStar(ctx context.Context, target reviewRepository
 		if desired {
 			method = "PUT"
 		}
-		if _, err := c.run(ctx, "gh", "api", "--method", method, starEndpoint); err != nil {
-			return false, fmt.Errorf("cannot converge Star state: %w", err)
+		if c.effects != nil {
+			*c.effects++
 		}
+		_, _ = c.run(ctx, "gh", "api", "--method", method, starEndpoint)
+		// A lost acknowledgement never authorizes another write. The verified
+		// observable state below decides whether this mutation converged.
 	}
 	_, verifyErr := c.run(ctx, "gh", "api", starEndpoint)
 	if desired && verifyErr != nil || !desired && (verifyErr == nil || !isNotFound(verifyErr)) {
-		return false, errors.New("cannot verify resulting Star state")
+		return false, unavailable("resulting Star state; mutation was not replayed")
 	}
 	return desired, nil
 }

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 )
@@ -17,6 +19,7 @@ type reviewUser struct {
 }
 type reviewRepository struct {
 	ID            int64      `json:"id"`
+	HasIssues     *bool      `json:"has_issues"`
 	FullName      string     `json:"full_name"`
 	Name          string     `json:"name"`
 	Fork          bool       `json:"fork"`
@@ -43,6 +46,8 @@ type reviewCommand struct {
 	dir           string
 	protocol      reviewContract
 	commentsCache map[int][]reviewComment
+	out           io.Writer
+	effects       *int
 }
 
 func NewReview() Handler {
@@ -50,30 +55,36 @@ func NewReview() Handler {
 	if err != nil {
 		return func(context.Context, []string) error { return err }
 	}
-	return (reviewCommand{run: systemRun, dir: ".", protocol: p, commentsCache: map[int][]reviewComment{}}).execute
+	return (reviewCommand{run: systemRun, dir: ".", out: os.Stdout, protocol: p, commentsCache: map[int][]reviewComment{}}).execute
 }
 
 func (c reviewCommand) api(ctx context.Context, endpoint string, out any) error {
 	b, err := c.run(ctx, "gh", "api", endpoint)
 	if err != nil {
-		return err
+		if isNotFound(err) {
+			return err
+		}
+		return unavailable("required GitHub API read")
 	}
 	if err = json.Unmarshal(b, out); err != nil {
-		return fmt.Errorf("invalid GitHub API response for %s: %w", endpoint, err)
+		return unavailable("required GitHub API response")
 	}
 	return nil
 }
 func (c reviewCommand) pages(ctx context.Context, endpoint string, out any) error {
 	b, err := c.run(ctx, "gh", "api", "--paginate", "--slurp", endpoint)
 	if err != nil {
-		return err
+		return unavailable("required paginated GitHub read")
 	}
 	if err = json.Unmarshal(b, out); err != nil {
-		return fmt.Errorf("invalid paginated GitHub response for %s: %w", endpoint, err)
+		return unavailable("required paginated GitHub response")
 	}
 	return nil
 }
 func (c reviewCommand) write(ctx context.Context, endpoint, method, field, value string) error {
+	if c.effects != nil {
+		*c.effects++
+	}
 	_, err := c.run(ctx, "gh", "api", "--method", method, endpoint, "-f", field+"="+value)
 	return err
 }
@@ -105,13 +116,46 @@ func (c reviewCommand) commentOnce(ctx context.Context, node string, authorID in
 	}
 	err = c.write(ctx, issueEndpoint(node, number)+"/comments", "POST", "body", body)
 	delete(c.commentsCache, number)
-	return err
+	if err != nil {
+		// A POST may have committed despite a lost acknowledgement. Observe
+		// once, never blindly post again under an ambiguous result.
+		observed, readErr := c.comments(ctx, node, number)
+		if readErr == nil {
+			for _, comment := range observed {
+				if comment.User.ID == authorID && comment.Body == body {
+					return nil
+				}
+			}
+		}
+		return unavailable("ambiguous Review comment write; inspect the thread before retrying")
+	}
+	return nil
 }
 func (c reviewCommand) close(ctx context.Context, node string, number int) error {
-	return c.write(ctx, issueEndpoint(node, number), "PATCH", "state", "closed")
+	return c.transition(ctx, node, number, "closed")
 }
 func (c reviewCommand) reopen(ctx context.Context, node string, number int) error {
-	return c.write(ctx, issueEndpoint(node, number), "PATCH", "state", "open")
+	return c.transition(ctx, node, number, "open")
+}
+
+func (c reviewCommand) transition(ctx context.Context, node string, number int, state string) error {
+	// Read before every convergence write, including retries of completed threads.
+	var current reviewIssue
+	if c.api(ctx, issueEndpoint(node, number), &current) != nil || current.Number != number || current.State == "" {
+		return unavailable("Review Thread state")
+	}
+	if current.State == state {
+		return nil
+	}
+	err := c.write(ctx, issueEndpoint(node, number), "PATCH", "state", state)
+	if err != nil {
+		var observed reviewIssue
+		if c.api(ctx, issueEndpoint(node, number), &observed) == nil && observed.Number == number && observed.State == state {
+			return nil
+		}
+		return unavailable("ambiguous Review Thread transition; inspect the thread before retrying")
+	}
+	return nil
 }
 
 func (c reviewCommand) execute(ctx context.Context, args []string) error {
@@ -131,6 +175,9 @@ func (c reviewCommand) admitOpen(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err = c.stationPreflight(ctx, node); err != nil {
+		return err
+	}
 	var pages [][]reviewIssue
 	endpoint := "repos/" + node.FullName + "/issues?state=all&per_page=100"
 	if err = c.pages(ctx, endpoint, &pages); err != nil {
@@ -145,6 +192,9 @@ func (c reviewCommand) admitOpen(ctx context.Context) error {
 		}
 	}
 	sort.Slice(issues, func(i, j int) bool { return issues[i].Number < issues[j].Number })
+	if err = c.historyPreflight(ctx, node, issues); err != nil {
+		return err
+	}
 	var problems []error
 	for _, issue := range issues {
 		if issue.State != "open" {

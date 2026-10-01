@@ -1,0 +1,52 @@
+{
+  "source": {
+    "repository": "taco3064/shoal-app",
+    "commit": "01a58cbece4d2878231f5c4dc5783b54f4ec7aa8",
+    "tree": "96e33255da4260387d44df22860a7ec2d95cdf59"
+  },
+  "sourceFiles": {
+    "src/protocol/services/network_compatibility/index.ts": "9c289c058513261f30820ea8586a6d8fa72977028f612ff65deaa975f0795115",
+    "protocol/review-v1.json": "aabab39c22d45826331babe6c4488f8a3cebc2f23e537f364e6a43eeedbb6453"
+  },
+  "networkRoot": {
+    "fullName": "taco3064/shoal-station",
+    "repositoryId": 1379044983
+  },
+  "requestFormPath": ".github/ISSUE_TEMPLATE/review-request.yml",
+  "summaryWorkflowPath": ".github/workflows/reviewer-summary.yml",
+  "reviewProtocolVersion": "1",
+  "admissionMarker": "shoal-review-admission:v1",
+  "eventMarker": "shoal-review-event:v1",
+  "supportedReviewerSummaryContracts": [
+    {
+      "protocolVersion": 1,
+      "summarySchemaVersion": 1
+    }
+  ],
+  "requestFormDigests": [
+    "6f5dad1fd33ec1ea077eb30e866ef8dcf4d9d840239701b997781418da6c7f2c"
+  ],
+  "summaryWorkflows": {
+    "3b66f6c4afb545bbf1ad847aed96d0dd8c336e6df100c6b898250a0bddf58fd6": {
+      "actionCommit": "b4d72405ebc03afc35d29093302b5593e1ddff1b",
+      "reviewerSummary": {
+        "protocolVersion": 1,
+        "summarySchemaVersion": 1
+      }
+    },
+    "616eea6f7ce06c0991f0023768c02c79a99d53aeb2f845c0934461720546a999": {
+      "actionCommit": "b4d72405ebc03afc35d29093302b5593e1ddff1b",
+      "reviewerSummary": {
+        "protocolVersion": 1,
+        "summarySchemaVersion": 1
+      }
+    },
+    "d586ab618c894d9729e21d7105becb0ca805df576198353293b1f77818927e99": {
+      "actionCommit": "b4d72405ebc03afc35d29093302b5593e1ddff1b",
+      "reviewerSummary": {
+        "protocolVersion": 1,
+        "summarySchemaVersion": 1
+      }
+    }
+  }
+}

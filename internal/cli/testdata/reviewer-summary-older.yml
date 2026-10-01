@@ -1,0 +1,47 @@
+name: Reviewer Summary
+
+on:
+  schedule:
+    - cron: '25 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  id-token: write
+  attestations: write
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute Reviewer Summary
+        uses: taco3064/shoal-action@b4d72405ebc03afc35d29093302b5593e1ddff1b
+        with:
+          network_root_repository_id: '1379044983'
+          network_root_repository_name: shoal-station
+          github_token: ${{ github.token }}
+
+      - name: Attest exact Reviewer Summary bytes
+        id: attest
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f
+        with:
+          subject-path: reviewer-summary.json
+
+      - name: Publish attested Reviewer Summary
+        id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewer-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reviewer-summary.json
+          if-no-files-found: error
+
+      - name: Record attempt correspondence
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact-id }}
+        run: |
+          sha256sum reviewer-summary.json
+          printf 'Reviewer Summary attempt: %s + %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          printf 'Workflow commit: %s\n' "$GITHUB_SHA"
+          printf 'Artifact ID: %s\nAttestation ID: %s\n' "$ARTIFACT_ID" "$ATTESTATION_ID"

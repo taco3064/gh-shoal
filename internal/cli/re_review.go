@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 )
@@ -19,7 +20,7 @@ func NewReReview() Handler {
 	if err != nil {
 		return func(context.Context, []string) error { return err }
 	}
-	return (reviewCommand{run: systemRun, dir: ".", protocol: p, commentsCache: map[int][]reviewComment{}}).executeReReview
+	return (reviewCommand{run: systemRun, dir: ".", out: os.Stdout, protocol: p, commentsCache: map[int][]reviewComment{}}).executeReReview
 }
 
 func (c reviewCommand) executeReReview(ctx context.Context, args []string) error {
@@ -33,6 +34,7 @@ func (c reviewCommand) executeReReview(ctx context.Context, args []string) error
 }
 
 func (c reviewCommand) reReview(ctx context.Context, agent string) error {
+	c.effects = new(int)
 	status, err := c.run(ctx, "git", "-C", c.dir, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return fmt.Errorf("cannot inspect Station working tree: %w", err)
@@ -46,6 +48,9 @@ func (c reviewCommand) reReview(ctx context.Context, agent string) error {
 		return err
 	}
 
+	if err = c.stationPreflight(ctx, node); err != nil {
+		return err
+	}
 	var pages [][]reviewIssue
 	if err = c.pages(ctx, "repos/"+node.FullName+"/issues?state=all&per_page=100", &pages); err != nil {
 		return err
@@ -60,6 +65,9 @@ func (c reviewCommand) reReview(ctx context.Context, agent string) error {
 	}
 	sort.Slice(issues, func(i, j int) bool { return issues[i].Number < issues[j].Number })
 
+	if err = c.historyPreflight(ctx, node, issues); err != nil {
+		return err
+	}
 	queue := make([]reReviewCandidate, 0)
 	var problems []error
 	for _, issue := range issues {
@@ -153,6 +161,9 @@ func (c reviewCommand) reReview(ctx context.Context, agent string) error {
 				problems = append(problems, fmt.Errorf("Issue #%d: %w", item.issue.Number, e))
 			}
 		}
+	}
+	if len(problems) == 0 && *c.effects == 0 {
+		report(c.out, "NO_CHANGES", "Review Basis and endorsement state already converged", "No new judgment or lifecycle mutation was needed.")
 	}
 	return errors.Join(problems...)
 }
