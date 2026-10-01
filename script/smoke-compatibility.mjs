@@ -15,11 +15,12 @@ const extension = process.platform === 'win32' ? 'gh-shoal.exe' : 'gh-shoal';
 const shim = join(shimDir, process.platform === 'win32' ? 'gh.exe' : 'gh');
 const env = { ...process.env, GH_CONFIG_DIR: join(temporary, 'gh-config'), XDG_DATA_HOME: join(temporary,'data'), XDG_STATE_HOME: join(temporary,'state'), GH_NO_UPDATE_NOTIFIER:'1', GH_NO_EXTENSION_UPDATE_NOTIFIER:'1', SHOAL_REAL_GIT: realGit, GH_TOKEN: 'controlled-offline-smoke-placeholder', GITHUB_TOKEN: '' };
 // Windows local extensions are dispatched through Git for Windows' real sh.
-// Expose it explicitly before the Git locator shim obscures gh's Git-relative
-// fallback. Normalize the case-insensitive PATH key for Node child processes.
+// Expose usr/bin/sh.exe directly: Git's bin/sh.exe launcher prepends its own
+// Git directory and shadows the controlled locator shim. Normalize the
+// case-insensitive PATH key for Node child processes.
 const inheritedPath = Object.entries(env).find(([key]) => key.toUpperCase() === 'PATH')?.[1] || '';
 for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key];
-env.PATH = process.platform === 'win32' ? resolve(dirname(realGit), '..', 'bin') + delimiter + inheritedPath : inheritedPath;
+env.PATH = process.platform === 'win32' ? resolve(dirname(realGit), '..', 'usr', 'bin') + delimiter + inheritedPath : inheritedPath;
 const run = (program, args, cwd = checkout, extra = {}) => execFileSync(program, args, { cwd, env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const git = (cwd, ...args) => run('git', args, cwd).trim();
 run('go', ['build', '-o', extension, './cmd/gh-shoal']);
