@@ -18,6 +18,21 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v5
 
+      - name: Setup Node for compatibility verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Checkout exact compatibility authority
+        uses: actions/checkout@v5
+        with:
+          repository: taco3064/shoal-app
+          ref: 01a58cbece4d2878231f5c4dc5783b54f4ec7aa8
+          path: compatibility-source
+
+      - name: Verify exact Platform correspondence
+        run: node script/compatibility.mjs compatibility-source
+
       - name: Publish GitHub CLI extension release
         uses: cli/gh-extension-precompile@v2.2.0
         with:

@@ -84,7 +84,7 @@ func TestCanonicalNoDiffDoesNotMutateGitOrActiveWorkflow(t *testing.T){
  dir:=t.TempDir()
  contents:=map[string][]byte{}
  for _,path:=range managedPaths{
-  contents[path]=[]byte("canonical "+path+"\n")
+  contents[path]=realManagedFixture()[path]
   full:=filepath.Join(dir,path)
   if err:=os.MkdirAll(filepath.Dir(full),0755);err!=nil{t.Fatal(err)}
   if err:=os.WriteFile(full,contents[path],0644);err!=nil{t.Fatal(err)}
@@ -183,7 +183,7 @@ func TestEnsureSummaryWorkflow(t *testing.T) {
 					if writes != 1 {
 						t.Fatal("verification before enable")
 					}
-					if tc.verifyError {
+					if tc.verifyError || tc.enableError {
 						return nil, errors.New("unavailable")
 					}
 					return []byte(tc.verified), nil
@@ -224,7 +224,7 @@ func TestEnsureIssues(t *testing.T) {
 				}
 				if len(args) == 2 && args[1] == "repos/reviewer/shoal-station" {
 					if reads >= len(tc.responses) {
-						t.Fatal("unexpected repository read")
+						return nil,errors.New("repository read unavailable")
 					}
 					out := tc.responses[reads]
 					reads++
@@ -271,7 +271,7 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 	git("config", "user.email", "reviewer@example.com")
 	contents := map[string][]byte{}
 	for _, path := range managedPaths {
-		contents[path] = []byte("canonical " + path + "\n")
+		contents[path] = realManagedFixture()[path]
 		p := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 			t.Fatal(err)
@@ -400,7 +400,7 @@ func TestSyncRepairsExecutableManagedFile(t *testing.T){
  git("init","-b","main");git("config","user.name","Reviewer");git("config","user.email","reviewer@example.com")
  contents:=map[string][]byte{}
  for _,path:=range managedPaths{
-  contents[path]=[]byte("canonical "+path+"\n")
+  contents[path]=realManagedFixture()[path]
   p:=filepath.Join(dir,path);if err:=os.MkdirAll(filepath.Dir(p),0755);err!=nil{t.Fatal(err)}
   if err:=os.WriteFile(p,contents[path],0644);err!=nil{t.Fatal(err)}
  }

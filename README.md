@@ -94,6 +94,53 @@ The machine-readable request and event contract comes from
 Its checked-in embedded copy at `internal/cli/protocol/review-v1.json` must remain
 byte-identical to the approved platform contract.
 
+## Compatibility, migration, and recovery
+
+The installed binary uses a generated capability snapshot of the exact reviewed
+Platform source at `01a58cbece4d2878231f5c4dc5783b54f4ec7aa8` (tree
+`96e33255da4260387d44df22860a7ec2d95cdf59`). The snapshot includes the exact
+Protocol bytes and the Platform's explicit managed-surface / Summary contract
+bindings. CI and release verification compare committed Platform bytes and
+regenerate the snapshot. Updating a component version does not expand Protocol
+support; mutable runtime discovery never expands an installed binary's authority.
+
+Review commands check the remote default-branch managed surfaces at one exact
+commit and scan formal history before admission, Agent execution, or lifecycle
+mutation. Older explicitly supported official station generations can still be
+reviewed. An explicit `init` nevertheless synchronizes to the current verified
+Network Root, provided that generation is within the installed capability. It
+never changes `README.md` or historical comments.
+
+| Diagnostic | Safe next action |
+| --- | --- |
+| `SUPPORTED` | Existing Review lifecycle rules apply. |
+| `REPAIRABLE_STATION_DRIFT` | Run `gh shoal init` from synchronized main; Root owners repair canonical surfaces through maintainer work. |
+| `CLI_UPGRADE_REQUIRED` | Upgrade the official Extension before retrying. |
+| `INCOMPATIBLE_PROTOCOL_EVIDENCE` | Inspect unsupported formal evidence; this binary will not reinterpret or rewrite it. |
+| `EXTERNAL_STATE_UNAVAILABLE` | Restore observable external state before retrying; inspect ambiguous writes rather than blindly repeating them. |
+| `NO_CHANGES` | Successful no-op; no synthetic mutation is needed. |
+
+Lost write acknowledgements are followed by bounded authoritative reads. An
+exact owner-authored comment or verified converged Star / Issue / settings state
+can complete recovery. Unknown state never authorizes a second blind write.
+A completed Judgment followed by a failed close is recognized on retry without
+another semantic Judgment. Failed `init` pushes retain local rollback behavior;
+reconcile the observable remote main before retrying if the remote may have
+accepted the push.
+
+Reproduce source correspondence and installed-command smoke with Node 24, Go,
+and GitHub CLI available:
+
+```bash
+node script/compatibility.mjs <exact-shoal-app-checkout>
+go test ./...
+node script/smoke-compatibility.mjs
+```
+
+The smoke uses an isolated GitHub CLI installation, native local Git transport,
+and controlled GitHub / Agent responses. It performs no real Review, Star,
+workflow, or repository-setting writes.
+
 ## Release
 
 Release publication is owned by this repository through

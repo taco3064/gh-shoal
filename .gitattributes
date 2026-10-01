@@ -1,1 +1,5 @@
 *.sh text eol=lf
+
+# These are reviewed exact-byte identities, not normalized text inputs.
+internal/cli/protocol/** -text
+internal/cli/testdata/** -text
