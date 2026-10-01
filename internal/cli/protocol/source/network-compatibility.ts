@@ -66,6 +66,14 @@ export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
       reviewerSummary: currentReviewerSummaryContract,
     },
   ],
+  [
+    // shoal-station#11: corrected Root-owner requester support.
+    '70d1011d0b1a6a68677bc891a408f2b73af868a89d283bffdfefa2fd24a6b9d2',
+    {
+      actionCommit: 'e1824eaa4766891a6fe56bb1ea2dfb3f13541e73',
+      reviewerSummary: currentReviewerSummaryContract,
+    },
+  ],
 ]);
 
 export function isSupportedReviewerSummaryContract(

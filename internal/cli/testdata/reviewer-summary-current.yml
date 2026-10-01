@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Compute Reviewer Summary
         id: compute
-        uses: taco3064/shoal-action@b4d72405ebc03afc35d29093302b5593e1ddff1b
+        uses: taco3064/shoal-action@e1824eaa4766891a6fe56bb1ea2dfb3f13541e73
         with:
           network_root_repository_id: '1379044983'
           network_root_repository_name: shoal-station

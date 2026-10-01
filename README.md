@@ -97,8 +97,8 @@ byte-identical to the approved platform contract.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `01a58cbece4d2878231f5c4dc5783b54f4ec7aa8` (tree
-`96e33255da4260387d44df22860a7ec2d95cdf59`). The snapshot includes the exact
+Platform source at `c9d585a06449b5cd38acbf6c4b5590419938b1ce` (tree
+`baadeeac21142ab9c5a184cb2e970fececc6a2eb`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. CI and release verification compare committed Platform bytes and
 regenerate the snapshot. Updating a component version does not expand Protocol
