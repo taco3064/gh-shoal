@@ -2,8 +2,9 @@
 // boundaries are controlled. No personal credential or real lifecycle writes.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve, delimiter } from 'node:path';
 
 const checkout = process.cwd();
@@ -23,12 +24,26 @@ for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env
 env.PATH = process.platform === 'win32' ? resolve(dirname(realGit), '..', 'usr', 'bin') + delimiter + inheritedPath : inheritedPath;
 const run = (program, args, cwd = checkout, extra = {}) => execFileSync(program, args, { cwd, env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const git = (cwd, ...args) => run('git', args, cwd).trim();
-run('go', ['build', '-o', extension, './cmd/gh-shoal']);
+if (process.env.SHOAL_SMOKE_BINARY) copyFileSync(resolve(process.env.SHOAL_SMOKE_BINARY), extension);
+else run('go', ['build', '-o', extension, './cmd/gh-shoal']);
 run('go', ['build', '-o', shim, './script/smoke-gh']);
 copyFileSync(shim, join(shimDir, process.platform === 'win32' ? 'codex.exe' : 'codex'));
 copyFileSync(shim, join(shimDir, process.platform === 'win32' ? 'git.exe' : 'git'));
 run(realGh, ['extension', 'install', '.']);
 assert.match(run(realGh, ['shoal', '--help']), /re-review/);
+
+// Equivalent old-release proof: identical runtime, with the exact snapshot
+// shipped at v0.6.0 (source 4d9ee5fa941fd5ded3011d8c4642c5bf2fff94f1).
+// This historical fixture is evidence, never an additional runtime authority.
+const oldCapability = readFileSync('internal/cli/testdata/capability-v0.6.0.json');
+assert.equal(createHash('sha256').update(oldCapability).digest('hex'), '85cdccabd9ffca8e7e758ebdb3d75f4abb240d86f3f67ad65265b7484a7a930d');
+const oldSource = join(temporary, 'old-source', 'gh-shoal'); mkdirSync(oldSource, { recursive: true });
+for (const path of ['cmd', 'internal']) cpSync(join(checkout, path), join(oldSource, path), { recursive: true });
+copyFileSync('go.mod', join(oldSource, 'go.mod'));
+writeFileSync(join(oldSource, 'internal/cli/protocol/capability.json'), oldCapability);
+run('go', ['build', '-o', extension, './cmd/gh-shoal'], oldSource);
+const oldEnv = { GH_CONFIG_DIR: join(temporary, 'old-gh-config'), XDG_DATA_HOME: join(temporary, 'old-data'), XDG_STATE_HOME: join(temporary, 'old-state') };
+run(realGh, ['extension', 'install', '.'], oldSource, oldEnv);
 
 const form = readFileSync('internal/cli/testdata/review-request.yml', 'utf8');
 const current = readFileSync('internal/cli/testdata/reviewer-summary-current.yml', 'utf8');
@@ -60,9 +75,9 @@ function fixture(name, localWorkflow = current) {
   const state = { node, root: { id: 1379044983, full_name: 'root/shoal-station', default_branch: 'main', owner: { id: 4, login: 'root', type: 'User' } }, managed: files(localWorkflow), canonical: files(), issues: [], comments: {}, writes: 0, agentCalls: 0, starred: false, workflowActive: true };
   const save = () => writeFileSync(statePath, JSON.stringify(state));
   const observed = () => JSON.parse(readFileSync(statePath, 'utf8'));
-  function command(name, wanted = 0, reason) {
+  function command(name, wanted = 0, reason, installEnv = {}) {
     save();
-    const result = spawnSync(realGh, ['shoal', name, ...(name === 'init' ? [] : ['--agent', 'codex'])], { cwd: directory, env: { ...env, PATH: shimDir + delimiter + env.PATH, SHOAL_SMOKE_STATE: statePath }, encoding: 'utf8' });
+    const result = spawnSync(realGh, ['shoal', name, ...(name === 'init' ? [] : ['--agent', 'codex'])], { cwd: directory, env: { ...env, ...installEnv, PATH: shimDir + delimiter + env.PATH, SHOAL_SMOKE_STATE: statePath }, encoding: 'utf8' });
     assert.equal(result.status, wanted, `${name}: ${result.stdout}\n${result.stderr}`);
     if (reason) assert.match(result.stdout + result.stderr, new RegExp(reason));
     Object.assign(state, observed());
@@ -76,6 +91,24 @@ const request = () => ({ number: 1, state: 'open', body: '### Repository name\n\
 const admission = () => ({ id: 10, user: { id: 1 }, body: 'shoal-review-admission:v1\n' + JSON.stringify({ reviewerNodeId: 11, targetRepositoryId: 55, repositoryName: 'project' }) });
 const judgment = () => ({ id: 11, user: { id: 1 }, body: 'shoal-review-event:v1\n' + JSON.stringify({ type: 'REVIEWED', reviewerNodeId: 11, targetRepositoryId: 55, targetRepositoryFullName: 'alice/project', targetDefaultBranch: 'main', targetCommit: sha, reviewPolicyPath: 'README.md', reviewPolicyCommit: sha, verdict: 'PASS', actualStarState: true, reviewedAt: '2026-09-24T00:00:00Z' }) });
 try {
+  test('shipped old capability refuses Phase 3 init, Review and Re-review with zero mutation', () => {
+    const f = fixture('old-capability'); f.state.issues = [request()];
+    const pre = git(f.directory, 'rev-parse', 'HEAD');
+    for (const name of ['init', 'review', 're-review']) f.command(name, 1, 'CLI_UPGRADE_REQUIRED', oldEnv);
+    assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
+    assert.equal(f.state.issues[0].state, 'open'); assert.deepEqual(f.state.comments, {}); assert.equal(f.state.starred, false);
+    assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre); assert.equal(git(f.directory, 'status', '--porcelain'), '');
+    // The same station is admitted solely by the refreshed embedded snapshot.
+    f.state.issues = [];
+    for (const name of ['init', 'review', 're-review']) f.command(name, 0, name === 'init' ? 'NO_CHANGES' : 'SUPPORTED');
+    assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0); assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre);
+  });
+  test('Phase 3 re-review accepts an already-complete thread without mutation', () => {
+    const f = fixture('phase3-rereview'); f.state.issues = [{ ...request(), state: 'closed' }];
+    f.state.comments['1'] = [admission(), judgment()]; f.state.starred = true;
+    f.command('re-review', 0, 'SUPPORTED');
+    assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0); assert.equal(f.state.comments['1'].length, 2);
+  });
   test('current supported generation executes real Review lifecycle', () => {
     const f = fixture('current'); f.state.issues = [request()];
     f.command('review', 0, 'SUPPORTED');

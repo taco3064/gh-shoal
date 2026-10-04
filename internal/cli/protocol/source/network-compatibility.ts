@@ -18,12 +18,18 @@ export type SummaryWorkflowTrust = {
   reviewerSummary: ReviewerSummaryContract;
 };
 
-export const currentReviewerSummaryContract = {
+export const legacyReviewerSummaryContract = {
   protocolVersion: 1,
   summarySchemaVersion: 1,
 } as const satisfies ReviewerSummaryContract;
 
+export const currentReviewerSummaryContract = {
+  protocolVersion: 1,
+  summarySchemaVersion: 2,
+} as const satisfies ReviewerSummaryContract;
+
 export const supportedReviewerSummaryContracts = [
+  legacyReviewerSummaryContract,
   currentReviewerSummaryContract,
 ] as const satisfies readonly ReviewerSummaryContract[];
 
@@ -44,18 +50,27 @@ export const allowedCanonicalReviewRequestFormDigests = new Set([
 // explicit Reviewer Summary Protocol/schema contract.
 export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
   [
+    // shoal-station#13: independently accepted workload generation.
+    'f6cda44c7e6e12117dac3c1f1c145bb69283eb3cfe66690ba67adddd3b4e89bd',
+    {
+      actionCommit: '4918e1afe85f15f8fe263eaf2866cd02a1f70a62',
+      // Freeze this production binding independently of future source evolution.
+      reviewerSummary: { protocolVersion: 1, summarySchemaVersion: 2 },
+    },
+  ],
+  [
     // shoal-station#9, b93d42c0: integrity checks and deterministic recovery.
     '3b66f6c4afb545bbf1ad847aed96d0dd8c336e6df100c6b898250a0bddf58fd6',
     {
       actionCommit: 'b4d72405ebc03afc35d29093302b5593e1ddff1b',
-      reviewerSummary: currentReviewerSummaryContract,
+      reviewerSummary: legacyReviewerSummaryContract,
     },
   ],
   [
     '616eea6f7ce06c0991f0023768c02c79a99d53aeb2f845c0934461720546a999',
     {
       actionCommit: 'b4d72405ebc03afc35d29093302b5593e1ddff1b',
-      reviewerSummary: currentReviewerSummaryContract,
+      reviewerSummary: legacyReviewerSummaryContract,
     },
   ],
   [
@@ -63,7 +78,7 @@ export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
     'd586ab618c894d9729e21d7105becb0ca805df576198353293b1f77818927e99',
     {
       actionCommit: 'b4d72405ebc03afc35d29093302b5593e1ddff1b',
-      reviewerSummary: currentReviewerSummaryContract,
+      reviewerSummary: legacyReviewerSummaryContract,
     },
   ],
   [
@@ -71,7 +86,7 @@ export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
     '70d1011d0b1a6a68677bc891a408f2b73af868a89d283bffdfefa2fd24a6b9d2',
     {
       actionCommit: 'e1824eaa4766891a6fe56bb1ea2dfb3f13541e73',
-      reviewerSummary: currentReviewerSummaryContract,
+      reviewerSummary: legacyReviewerSummaryContract,
     },
   ],
 ]);

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -21,10 +22,10 @@ func TestInstalledCapabilityUsesExplicitRealContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"current", "older"} {
+	for _, name := range []string{"current", "previous", "older"} {
 		files := realManagedFixture()
-		if name == "older" {
-			files[summaryPath], _ = managedFixtureFS.ReadFile("testdata/reviewer-summary-older.yml")
+		if name != "current" {
+			files[summaryPath], _ = managedFixtureFS.ReadFile("testdata/reviewer-summary-" + name + ".yml")
 		}
 		if !s.supports(files) {
 			t.Fatalf("official %s generation rejected", name)
@@ -38,6 +39,48 @@ func TestInstalledCapabilityUsesExplicitRealContracts(t *testing.T) {
 	p.ProtocolVersion = "999"
 	if _, err := loadCapability(p); err == nil {
 		t.Fatal("unknown runtime Protocol accepted")
+	}
+}
+
+func TestRefreshPreservesShippedCapabilityAndRejectsUnknownBindings(t *testing.T) {
+	oldBytes, err := managedFixtureFS.ReadFile("testdata/capability-v0.6.0.json")
+	if err != nil || hashBytes(oldBytes) != "85cdccabd9ffca8e7e758ebdb3d75f4abb240d86f3f67ad65265b7484a7a930d" {
+		t.Fatal("historical shipped capability bytes changed")
+	}
+	var old capability
+	if err := json.Unmarshal(oldBytes, &old); err != nil {
+		t.Fatal(err)
+	}
+	s, err := loadCapability(protocolFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for digest, binding := range old.SummaryWorkflows {
+		if s.SummaryWorkflows[digest] != binding {
+			t.Fatalf("legacy binding changed: %s", digest)
+		}
+	}
+	files := realManagedFixture()
+	if old.supports(files) || !s.supports(files) {
+		t.Fatal("Phase 3 support did not come exclusively from refreshed capability")
+	}
+	digest := hashBytes(files[summaryPath])
+	binding := s.SummaryWorkflows[digest]
+	if binding.ReviewerSummary != (summaryContract{1, 2}) {
+		t.Fatal("Phase 3 fixture is not bound to Protocol 1 / Schema 2")
+	}
+	for _, contract := range []summaryContract{{1, 999}, {999, 2}} {
+		modified := binding
+		modified.ReviewerSummary = contract
+		s.SummaryWorkflows[digest] = modified
+		if s.supports(files) {
+			t.Fatal("unknown Workflow / Summary contract accepted")
+		}
+	}
+	binding.ActionCommit = "mutable-tag"
+	s.SummaryWorkflows[digest] = binding
+	if s.supports(files) {
+		t.Fatal("non-immutable Action identity accepted")
 	}
 }
 
