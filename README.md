@@ -97,10 +97,13 @@ byte-identical to the approved platform contract.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `c9d585a06449b5cd38acbf6c4b5590419938b1ce` (tree
-`baadeeac21142ab9c5a184cb2e970fececc6a2eb`). The snapshot includes the exact
+Platform source at `134d82457c99777cba752a549fb7e26ab239d71c` (tree
+`7ff3bfca36f1e0b8b4c5d46d43e0510454d99b5c`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
-bindings. CI and release verification compare committed Platform bytes and
+bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
+all four retained official Schema 1 generations keep their original bindings.
+The CLI uses that schema only for compatibility, without computing workload
+metrics or changing Review / Re-review semantics. CI and release verification compare committed Platform bytes and
 regenerate the snapshot. Updating a component version does not expand Protocol
 support; mutable runtime discovery never expands an installed binary's authority.
 
