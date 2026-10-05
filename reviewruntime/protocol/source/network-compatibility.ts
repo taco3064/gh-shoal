@@ -50,6 +50,14 @@ export const allowedCanonicalReviewRequestFormDigests = new Set([
 // explicit Reviewer Summary Protocol/schema contract.
 export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
   [
+    // Coordinated station#17 caller candidate; local review, not deployed admission.
+    '11259fa4266e6369dfbdcf6195c6d975377e63ea32f1f6c5989261cc472afead',
+    {
+      actionCommit: '4918e1afe85f15f8fe263eaf2866cd02a1f70a62',
+      reviewerSummary: { protocolVersion: 1, summarySchemaVersion: 2 },
+    },
+  ],
+  [
     // shoal-station#13: independently accepted workload generation.
     'f6cda44c7e6e12117dac3c1f1c145bb69283eb3cfe66690ba67adddd3b4e89bd',
     {
