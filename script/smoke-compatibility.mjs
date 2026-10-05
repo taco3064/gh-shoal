@@ -50,7 +50,9 @@ const current = readFileSync('reviewruntime/testdata/reviewer-summary-current.ym
 const older = readFileSync('reviewruntime/testdata/reviewer-summary-older.yml', 'utf8');
 const requestPath = '.github/ISSUE_TEMPLATE/review-request.yml';
 const summaryPath = '.github/workflows/reviewer-summary.yml';
-const files = (workflow = current) => ({ [requestPath]: form, [summaryPath]: workflow });
+const hostedPath = '.github/workflows/hosted-review.yml';
+const hosted = 'name: Controlled Hosted fixture\non:\n  workflow_call:\n';
+const files = (workflow = current) => ({ [requestPath]: form, [summaryPath]: workflow, [hostedPath]: hosted });
 const sha = '1'.repeat(40);
 const policy = 'Reviewer-owned modified policy: never replace me.\n';
 let passed = 0;
@@ -151,6 +153,56 @@ try {
     const f = fixture('noop'); const pre = git(f.directory, 'rev-parse', 'HEAD');
     f.command('init', 0, 'NO_CHANGES'); f.command('init', 0, 'NO_CHANGES');
     assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre); assert.equal(f.state.writes, 0);
+  });
+  test('init migrates missing and stale Hosted reusable bytes through the installed extension', () => {
+    for (const initial of ['missing', 'stale']) {
+      const f = fixture('hosted-' + initial);
+      if (initial === 'missing') {
+        git(f.directory, 'rm', hostedPath); delete f.state.managed[hostedPath];
+      } else {
+        writeFileSync(join(f.directory, hostedPath), 'stale reusable bytes\n');
+        f.state.managed[hostedPath] = 'stale reusable bytes\n'; git(f.directory, 'add', hostedPath);
+      }
+      git(f.directory, 'commit', '-m', 'Controlled auxiliary drift'); git(f.directory, 'push', 'origin', 'HEAD:refs/heads/main');
+      const pre = git(f.directory, 'rev-parse', 'HEAD');
+      f.command('init', 0, 'SUPPORTED');
+      const migrated = git(f.directory, 'rev-parse', 'HEAD');
+      assert.notEqual(migrated, pre); assert.equal(readFileSync(join(f.directory, hostedPath), 'utf8'), hosted);
+      assert.equal(git(f.directory, 'ls-remote', 'origin', 'refs/heads/main').slice(0, 40), migrated);
+      f.state.managed[hostedPath] = hosted;
+      f.command('init', 0, 'NO_CHANGES');
+      assert.equal(git(f.directory, 'rev-parse', 'HEAD'), migrated); assert.equal(git(f.directory, 'status', '--porcelain'), '');
+      assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
+    }
+  });
+  test('supported legacy Root preserves two-file init convergence and existing auxiliary bytes', () => {
+    const f = fixture('legacy-root'); delete f.state.canonical[hostedPath];
+    const pre = git(f.directory, 'rev-parse', 'HEAD');
+    f.command('init', 0, 'NO_CHANGES');
+    assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre);
+    assert.equal(readFileSync(join(f.directory, hostedPath), 'utf8'), hosted); assert.equal(f.state.writes, 0);
+  });
+  test('Review and Re-review never read unavailable auxiliary Hosted capability', () => {
+    for (const auxiliary of ['missing', 'stale', 'unavailable']) {
+      const f = fixture('optional-' + auxiliary);
+      if (auxiliary === 'missing') { delete f.state.managed[hostedPath]; delete f.state.canonical[hostedPath]; }
+      if (auxiliary === 'stale') { f.state.managed[hostedPath] = 'unusable auxiliary bytes'; f.state.canonical[hostedPath] = 'unusable auxiliary bytes'; }
+      if (auxiliary === 'unavailable') f.state.unavailable = hostedPath;
+      f.state.workflowActive = false;
+      for (const name of ['review', 're-review']) f.command(name, 0, 'NO_CHANGES');
+      assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
+    }
+  });
+  test('init fails closed for an unavailable auxiliary or a caller whose required callee is missing', () => {
+    for (const reason of ['unavailable', 'missing-required']) {
+      const f = fixture('callee-' + reason);
+      if (reason === 'unavailable') f.state.unavailable = hostedPath;
+      else { delete f.state.canonical[hostedPath]; f.state.canonical[summaryPath] += '\n    uses: ./.github/workflows/hosted-review.yml\n'; }
+      const pre = git(f.directory, 'rev-parse', 'HEAD');
+      f.command('init', 1, 'EXTERNAL_STATE_UNAVAILABLE');
+      assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre); assert.equal(git(f.directory, 'status', '--porcelain'), '');
+      assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
+    }
   });
   test('partial prior judgment and ambiguous close recover without another judgment', () => {
     const f = fixture('partial'); f.state.issues = [request()]; f.state.comments['1'] = [admission(), judgment()]; f.state.starred = true; f.state.lost = 'state=closed';

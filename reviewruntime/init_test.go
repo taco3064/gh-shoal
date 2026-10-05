@@ -84,7 +84,7 @@ func TestCanonicalNoDiffDoesNotMutateGitOrActiveWorkflow(t *testing.T){
  dir:=t.TempDir()
  contents:=map[string][]byte{}
  for _,path:=range managedPaths{
-  contents[path]=realManagedFixture()[path]
+  contents[path]=syncFixture()[path]
   full:=filepath.Join(dir,path)
   if err:=os.MkdirAll(filepath.Dir(full),0755);err!=nil{t.Fatal(err)}
   if err:=os.WriteFile(full,contents[path],0644);err!=nil{t.Fatal(err)}
@@ -271,7 +271,7 @@ func TestInitRetryAfterIssuesFailureKeepsSuccessfulSync(t *testing.T) {
 	git("config", "user.email", "reviewer@example.com")
 	contents := map[string][]byte{}
 	for _, path := range managedPaths {
-		contents[path] = realManagedFixture()[path]
+		contents[path] = syncFixture()[path]
 		p := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 			t.Fatal(err)
@@ -400,7 +400,7 @@ func TestSyncRepairsExecutableManagedFile(t *testing.T){
  git("init","-b","main");git("config","user.name","Reviewer");git("config","user.email","reviewer@example.com")
  contents:=map[string][]byte{}
  for _,path:=range managedPaths{
-  contents[path]=realManagedFixture()[path]
+  contents[path]=syncFixture()[path]
   p:=filepath.Join(dir,path);if err:=os.MkdirAll(filepath.Dir(p),0755);err!=nil{t.Fatal(err)}
   if err:=os.WriteFile(p,contents[path],0644);err!=nil{t.Fatal(err)}
  }

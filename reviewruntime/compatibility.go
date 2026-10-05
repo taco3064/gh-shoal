@@ -47,7 +47,7 @@ func loadCapability(p reviewContract) (capability, error) {
 		return s, errors.New("invalid installed compatibility snapshot")
 	}
 	b, err := reviewContractFS.ReadFile("protocol/review-v1.json")
-	if err != nil || s.SourceFiles["protocol/review-v1.json"] != hashBytes(b) || s.NetworkRoot.RepositoryID != rootID || s.RequestFormPath != managedPaths[0] || s.SummaryWorkflowPath != summaryPath || s.ReviewProtocolVersion != p.ProtocolVersion || s.AdmissionMarker != p.Admission.Marker || s.EventMarker != p.Event.Marker {
+	if err != nil || s.SourceFiles["protocol/review-v1.json"] != hashBytes(b) || s.NetworkRoot.RepositoryID != rootID || s.RequestFormPath != requestFormPath || s.SummaryWorkflowPath != summaryPath || s.ReviewProtocolVersion != p.ProtocolVersion || s.AdmissionMarker != p.Admission.Marker || s.EventMarker != p.Event.Marker {
 		return s, errors.New("installed Protocol contract does not match the proven capability snapshot")
 	}
 	return s, nil
@@ -89,7 +89,7 @@ func report(w io.Writer, class, surface, action string) {
 
 type apiReader func(context.Context, string, any) error
 
-func committedManagedFiles(ctx context.Context, api apiReader, name, branch string) (map[string][]byte, error) {
+func committedCompatibilityFiles(ctx context.Context, api apiReader, name, branch string) (map[string][]byte, error) {
 	if !repoName.MatchString(name) || branch == "" {
 		return nil, unavailable("Station repository identity / default branch")
 	}
@@ -102,7 +102,7 @@ func committedManagedFiles(ctx context.Context, api apiReader, name, branch stri
 		return nil, unavailable("Station default-branch snapshot")
 	}
 	contents := map[string][]byte{}
-	for _, path := range managedPaths {
+	for _, path := range compatibilityPaths {
 		var f struct {
 			Content  string `json:"content"`
 			Encoding string `json:"encoding"`
@@ -132,7 +132,7 @@ func (c reviewCommand) stationPreflight(ctx context.Context, node reviewReposito
 	if err != nil {
 		return err
 	}
-	files, err := committedManagedFiles(ctx, c.api, node.FullName, node.DefaultBranch)
+	files, err := committedCompatibilityFiles(ctx, c.api, node.FullName, node.DefaultBranch)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (c reviewCommand) stationPreflight(ctx context.Context, node reviewReposito
 	if c.api(ctx, fmt.Sprintf("repositories/%d", rootID), &root) != nil || root.ID != rootID {
 		return unavailable("canonical Network Root identity")
 	}
-	target, err := committedManagedFiles(ctx, c.api, root.FullName, root.DefaultBranch)
+	target, err := committedCompatibilityFiles(ctx, c.api, root.FullName, root.DefaultBranch)
 	if err != nil {
 		return err
 	}

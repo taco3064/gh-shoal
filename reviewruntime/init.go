@@ -17,9 +17,24 @@ import (
 )
 
 const rootID = 1379044983
+const requestFormPath = ".github/ISSUE_TEMPLATE/review-request.yml"
+const hostedPath = ".github/workflows/hosted-review.yml"
 const summaryPath = ".github/workflows/reviewer-summary.yml"
 
-var managedPaths = []string{".github/ISSUE_TEMPLATE/review-request.yml", summaryPath}
+// Synchronization owns the auxiliary Hosted surface; base compatibility does not.
+var managedPaths = []string{requestFormPath, summaryPath, hostedPath}
+var compatibilityPaths = []string{requestFormPath, summaryPath}
+
+// Older supported Roots predate Hosted. Preserve their two-file convergence
+// without deleting a fork's auxiliary file. New callers must have their callee.
+func canonicalSyncPaths(contents map[string][]byte) []string {
+	paths := append([]string(nil), compatibilityPaths...)
+	if _, ok := contents[hostedPath]; ok {
+		paths = append(paths, hostedPath)
+	}
+	return paths
+}
+
 var repoName = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 type runner func(context.Context, string, ...string) ([]byte, error)
@@ -182,8 +197,15 @@ func (c initCommand) execute(ctx context.Context, args []string) error {
 			Encoding string `json:"encoding"`
 			Type     string `json:"type"`
 		}
-		if err = c.api(ctx, "repos/"+root.FullName+"/contents/"+path+"?ref="+ref.Object.SHA, &file); err != nil {
-			return err
+		out, readErr := c.run(ctx, "gh", "api", "repos/"+root.FullName+"/contents/"+path+"?ref="+ref.Object.SHA)
+		if readErr != nil {
+			if path == hostedPath && isNotFound(readErr) && !bytes.Contains(contents[summaryPath], []byte("./"+hostedPath)) {
+				continue
+			}
+			return unavailable("canonical " + path)
+		}
+		if json.Unmarshal(out, &file) != nil {
+			return unavailable("canonical " + path + " response")
 		}
 		if file.Type != "file" || file.Encoding != "base64" {
 			return fmt.Errorf("canonical %s is not a regular file", path)
@@ -217,8 +239,9 @@ func (c initCommand) execute(ctx context.Context, args []string) error {
 			return err
 		}
 	}
+	paths := canonicalSyncPaths(contents)
 	changed := false
-	for _, path := range managedPaths {
+	for _, path := range paths {
 		p := filepath.Join(c.dir, path)
 		b, e := os.ReadFile(p)
 		if e != nil && !os.IsNotExist(e) {
@@ -254,7 +277,7 @@ func (c initCommand) execute(ctx context.Context, args []string) error {
 	if _, err = c.call(ctx, "gh", "auth", "status"); err != nil {
 		return err
 	}
-	for _, path := range managedPaths {
+	for _, path := range paths {
 		b, e := os.ReadFile(filepath.Join(c.dir, path))
 		if e != nil || !bytes.Equal(b, contents[path]) {
 			return fmt.Errorf("managed file %s failed post-init verification: %w", path, e)
@@ -383,11 +406,12 @@ func safePath(dir, path string) error {
 	return nil
 }
 func (c initCommand) sync(ctx context.Context, pre, remote string, contents map[string][]byte) (err error) {
+	paths := canonicalSyncPaths(contents)
 	// Restore only files this invocation touched, including previously absent paths.
 	originals := make(map[string][]byte)
 	present := make(map[string]bool)
 	modes := make(map[string]os.FileMode)
-	for _, path := range managedPaths {
+	for _, path := range paths {
 		p := filepath.Join(c.dir, path)
 		b, e := os.ReadFile(p)
 		if e == nil {
@@ -409,7 +433,7 @@ func (c initCommand) sync(ctx context.Context, pre, remote string, contents map[
 			if committed {
 				_, _ = c.git(ctx, "reset", "--mixed", pre)
 			}
-			for _, path := range managedPaths {
+			for _, path := range paths {
 				p := filepath.Join(c.dir, path)
 				if present[path] {
 					_ = os.WriteFile(p, originals[path], 0644)
@@ -421,7 +445,7 @@ func (c initCommand) sync(ctx context.Context, pre, remote string, contents map[
 			_, _ = c.git(ctx, "reset", "--mixed", pre)
 		}
 	}()
-	for _, path := range managedPaths {
+	for _, path := range paths {
 		p := filepath.Join(c.dir, path)
 		if e := os.MkdirAll(filepath.Dir(p), 0755); e != nil {
 			return e
@@ -449,7 +473,7 @@ func (c initCommand) sync(ctx context.Context, pre, remote string, contents map[
 		return e
 	}
 	allowed := map[string]bool{}
-	for _, p := range managedPaths {
+	for _, p := range paths {
 		allowed[p] = true
 	}
 	for _, p := range strings.Split(diff, "\x00") {
