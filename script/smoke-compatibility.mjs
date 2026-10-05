@@ -35,19 +35,19 @@ assert.match(run(realGh, ['shoal', '--help']), /re-review/);
 // Equivalent old-release proof: identical runtime, with the exact snapshot
 // shipped at v0.6.0 (source 4d9ee5fa941fd5ded3011d8c4642c5bf2fff94f1).
 // This historical fixture is evidence, never an additional runtime authority.
-const oldCapability = readFileSync('internal/cli/testdata/capability-v0.6.0.json');
+const oldCapability = readFileSync('reviewruntime/testdata/capability-v0.6.0.json');
 assert.equal(createHash('sha256').update(oldCapability).digest('hex'), '85cdccabd9ffca8e7e758ebdb3d75f4abb240d86f3f67ad65265b7484a7a930d');
 const oldSource = join(temporary, 'old-source', 'gh-shoal'); mkdirSync(oldSource, { recursive: true });
-for (const path of ['cmd', 'internal']) cpSync(join(checkout, path), join(oldSource, path), { recursive: true });
+for (const path of ['cmd', 'internal', 'reviewruntime']) cpSync(join(checkout, path), join(oldSource, path), { recursive: true });
 copyFileSync('go.mod', join(oldSource, 'go.mod'));
-writeFileSync(join(oldSource, 'internal/cli/protocol/capability.json'), oldCapability);
+writeFileSync(join(oldSource, 'reviewruntime/protocol/capability.json'), oldCapability);
 run('go', ['build', '-o', extension, './cmd/gh-shoal'], oldSource);
 const oldEnv = { GH_CONFIG_DIR: join(temporary, 'old-gh-config'), XDG_DATA_HOME: join(temporary, 'old-data'), XDG_STATE_HOME: join(temporary, 'old-state') };
 run(realGh, ['extension', 'install', '.'], oldSource, oldEnv);
 
-const form = readFileSync('internal/cli/testdata/review-request.yml', 'utf8');
-const current = readFileSync('internal/cli/testdata/reviewer-summary-current.yml', 'utf8');
-const older = readFileSync('internal/cli/testdata/reviewer-summary-older.yml', 'utf8');
+const form = readFileSync('reviewruntime/testdata/review-request.yml', 'utf8');
+const current = readFileSync('reviewruntime/testdata/reviewer-summary-current.yml', 'utf8');
+const older = readFileSync('reviewruntime/testdata/reviewer-summary-older.yml', 'utf8');
 const requestPath = '.github/ISSUE_TEMPLATE/review-request.yml';
 const summaryPath = '.github/workflows/reviewer-summary.yml';
 const files = (workflow = current) => ({ [requestPath]: form, [summaryPath]: workflow });

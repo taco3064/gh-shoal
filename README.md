@@ -91,7 +91,7 @@ are not executed during discovery, classification, or maintenance.
 
 The machine-readable request and event contract comes from
 [`shoal-app/protocol/review-v1.json`](https://github.com/taco3064/shoal-app/blob/main/protocol/review-v1.json).
-Its checked-in embedded copy at `internal/cli/protocol/review-v1.json` must remain
+Its checked-in embedded copy at `reviewruntime/protocol/review-v1.json` must remain
 byte-identical to the approved platform contract.
 
 ## Compatibility, migration, and recovery
@@ -208,3 +208,10 @@ resolution. It is not a substitute for PR-stage runtime testing. If the remote
 install resolves but `gh shoal --help` crashes or exposes behavior that the PR
 exact-head local-install gate should have caught, treat that as a PR validation
 escape and tighten PR CI before closing the release-foundation issue.
+
+## Shared host runtime
+
+The local commands and downstream hosted integration use the same public
+[`reviewruntime` package](docs/shared-review-runtime.md). The contract documents
+exact-generation consumption, semantic Agent input/results, separate GitHub
+authority roles, structured failures, and deterministic recovery.

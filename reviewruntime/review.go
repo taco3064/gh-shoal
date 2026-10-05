@@ -1,4 +1,4 @@
-package cli
+package reviewruntime
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 )
@@ -43,19 +42,12 @@ type reviewComment struct {
 }
 type reviewCommand struct {
 	run           runner
+	agent         Agent
 	dir           string
 	protocol      reviewContract
 	commentsCache map[int][]reviewComment
 	out           io.Writer
 	effects       *int
-}
-
-func NewReview() Handler {
-	p, err := loadReviewContract()
-	if err != nil {
-		return func(context.Context, []string) error { return err }
-	}
-	return (reviewCommand{run: systemRun, dir: ".", out: os.Stdout, protocol: p, commentsCache: map[int][]reviewComment{}}).execute
 }
 
 func (c reviewCommand) api(ctx context.Context, endpoint string, out any) error {
@@ -129,7 +121,15 @@ func (c reviewCommand) commentOnce(ctx context.Context, node string, authorID in
 		}
 		return unavailable("ambiguous Review comment write; inspect the thread before retrying")
 	}
-	return nil
+	observed, readErr := c.comments(ctx, node, number)
+	if readErr == nil {
+		for _, comment := range observed {
+			if comment.User.ID == authorID && comment.Body == body {
+				return nil
+			}
+		}
+	}
+	return unavailable("Review comment read-back / Reviewer authorship")
 }
 func (c reviewCommand) close(ctx context.Context, node string, number int) error {
 	return c.transition(ctx, node, number, "closed")
@@ -155,17 +155,11 @@ func (c reviewCommand) transition(ctx context.Context, node string, number int, 
 		}
 		return unavailable("ambiguous Review Thread transition; inspect the thread before retrying")
 	}
+	var observed reviewIssue
+	if c.api(ctx, issueEndpoint(node, number), &observed) != nil || observed.Number != number || observed.State != state {
+		return unavailable("Review Thread transition read-back")
+	}
 	return nil
-}
-
-func (c reviewCommand) execute(ctx context.Context, args []string) error {
-	if len(args) != 2 || args[0] != "--agent" {
-		return errors.New("usage: gh shoal review --agent <agent>")
-	}
-	if _, ok := agentCommands[args[1]]; !ok {
-		return fmt.Errorf("unsupported Local AI Agent %q", args[1])
-	}
-	return c.automated(ctx, args[1])
 }
 
 // admitOpen retains the milestone [05] admission path as the single source of
