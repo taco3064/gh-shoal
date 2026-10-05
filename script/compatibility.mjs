@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import * as authority from '../internal/cli/protocol/source/network-compatibility.ts';
+import * as authority from '../reviewruntime/protocol/source/network-compatibility.ts';
 
-const directory = 'internal/cli/protocol/';
+const directory = 'reviewruntime/protocol/';
 const sourceCommit = '134d82457c99777cba752a549fb7e26ab239d71c';
 const sourceTree = '7ff3bfca36f1e0b8b4c5d46d43e0510454d99b5c';
 const paths = {

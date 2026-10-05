@@ -1,10 +1,9 @@
-package cli
+package reviewruntime
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 )
@@ -15,26 +14,10 @@ type reReviewCandidate struct {
 	pendingLifecycle bool
 }
 
-func NewReReview() Handler {
-	p, err := loadReviewContract()
-	if err != nil {
-		return func(context.Context, []string) error { return err }
-	}
-	return (reviewCommand{run: systemRun, dir: ".", out: os.Stdout, protocol: p, commentsCache: map[int][]reviewComment{}}).executeReReview
-}
-
-func (c reviewCommand) executeReReview(ctx context.Context, args []string) error {
-	if len(args) != 2 || args[0] != "--agent" {
-		return errors.New("usage: gh shoal re-review --agent <agent>")
-	}
-	if _, ok := agentCommands[args[1]]; !ok {
-		return fmt.Errorf("unsupported Local AI Agent %q", args[1])
-	}
-	return c.reReview(ctx, args[1])
-}
-
 func (c reviewCommand) reReview(ctx context.Context, agent string) error {
-	c.effects = new(int)
+	if c.effects == nil {
+		c.effects = new(int)
+	}
 	status, err := c.run(ctx, "git", "-C", c.dir, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return fmt.Errorf("cannot inspect Station working tree: %w", err)
@@ -142,11 +125,12 @@ func (c reviewCommand) reReview(ctx context.Context, agent string) error {
 		results, e := c.runAgent(ctx, agent, node, ready)
 		if e != nil {
 			problems = append(problems, e)
+			break // Operational Agent failure is not a judgment; preserve remaining work.
 		}
 		for _, item := range ready {
 			result, ok := results[item.issue.Number]
 			if !ok {
-				problems = append(problems, fmt.Errorf("Issue #%d: missing or unusable Agent result", item.issue.Number))
+				problems = append(problems, Fault{"AGENT_RESULT_INVALID", fmt.Sprintf("Issue #%d: missing or unusable Agent result", item.issue.Number)})
 				continue
 			}
 			if _, ok = readyByIssue[item.issue.Number]; !ok {

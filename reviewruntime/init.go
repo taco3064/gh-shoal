@@ -1,4 +1,4 @@
-package cli
+package reviewruntime
 
 import (
 	"bytes"
@@ -61,7 +61,7 @@ type initCommand struct {
 	effects *int
 }
 
-func NewInit() Handler {
+func NewInit() func(context.Context, []string) error {
 	c := initCommand{run: systemRun, dir: ".", out: os.Stdout}
 	return c.execute
 }

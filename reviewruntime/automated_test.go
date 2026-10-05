@@ -1,4 +1,4 @@
-package cli
+package reviewruntime
 
 import (
 	"context"
@@ -171,7 +171,7 @@ func TestAgentResultRejectsDuplicateAndForeignIssue(t *testing.T) {
 	c := f.automatedCommand(t)
 	f.agentOutput = `[{"issue":1,"verdict":"PASS","comment":"A"},{"issue":1,"verdict":"FAIL","comment":"B"},{"issue":2,"verdict":"PASS","comment":"Foreign"}]`
 	batch := []pendingReview{{issue: reviewIssue{Number: 1}}}
-	results, err := c.runAgent(context.Background(), "grok", f.node, batch)
+	results, err := c.withLocalAgent("grok").runAgent(context.Background(), "grok", f.node, batch)
 	if err != nil || len(results) != 0 {
 		t.Fatalf("accepted adversarial batch: %v %v", results, err)
 	}
@@ -186,7 +186,7 @@ func TestAllAgentAdaptersBuildInvocation(t *testing.T) {
 			f := fixture()
 			c := f.automatedCommand(t)
 			f.agentOutput = `[ { "issue": 1, "verdict": "PASS", "comment": "A" } ]`
-			_, err := c.runAgent(context.Background(), name, f.node, []pendingReview{{issue: reviewIssue{Number: 1}}})
+			_, err := c.withLocalAgent(name).runAgent(context.Background(), name, f.node, []pendingReview{{issue: reviewIssue{Number: 1}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +201,7 @@ func TestMissingResultDoesNotUseAgentTerminalOutput(t *testing.T) {
 	f := fixture()
 	c := f.automatedCommand(t)
 	f.resultFile = "" // fake process exits successfully but writes nothing.
-	_, err := c.runAgent(context.Background(), "codex", f.node, []pendingReview{{issue: reviewIssue{Number: 1}}})
+	_, err := c.withLocalAgent("codex").runAgent(context.Background(), "codex", f.node, []pendingReview{{issue: reviewIssue{Number: 1}}})
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected missing JSON file, got %v", err)
 	}
