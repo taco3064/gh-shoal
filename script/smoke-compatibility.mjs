@@ -45,6 +45,19 @@ run('go', ['build', '-o', extension, './cmd/gh-shoal'], oldSource);
 const oldEnv = { GH_CONFIG_DIR: join(temporary, 'old-gh-config'), XDG_DATA_HOME: join(temporary, 'old-data'), XDG_STATE_HOME: join(temporary, 'old-state') };
 run(realGh, ['extension', 'install', '.'], oldSource, oldEnv);
 
+// v0.9.0 was published before final caller admission. Preserve its exact bytes
+// as a refusal control; published preliminary entries are not Platform authority.
+const publishedCapability = readFileSync('reviewruntime/testdata/capability-v0.9.0.json');
+assert.equal(createHash('sha256').update(publishedCapability).digest('hex'), '28ccae7b338b2a9e3c64141d1231d652dacbc3ead19d29a2397d1c87ed58629c');
+const publishedSource = join(temporary, 'published-source', 'gh-shoal');
+cpSync(oldSource, publishedSource, { recursive: true });
+writeFileSync(join(publishedSource, 'reviewruntime/protocol/capability.json'), publishedCapability);
+run('go', ['build', '-o', extension, './cmd/gh-shoal'], publishedSource);
+const publishedEnv = { GH_CONFIG_DIR: join(temporary, 'published-gh-config'), XDG_DATA_HOME: join(temporary, 'published-data'), XDG_STATE_HOME: join(temporary, 'published-state') };
+run(realGh, ['extension', 'install', '.'], publishedSource, publishedEnv);
+const finalCaller = readFileSync('reviewruntime/testdata/reviewer-summary-final-hosted.yml', 'utf8');
+assert.equal(createHash('sha256').update(finalCaller).digest('hex'), 'b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105');
+
 const form = readFileSync('reviewruntime/testdata/review-request.yml', 'utf8');
 const current = readFileSync('reviewruntime/testdata/reviewer-summary-current.yml', 'utf8');
 const older = readFileSync('reviewruntime/testdata/reviewer-summary-older.yml', 'utf8');
@@ -93,6 +106,25 @@ const request = () => ({ number: 1, state: 'open', body: '### Repository name\n\
 const admission = () => ({ id: 10, user: { id: 1 }, body: 'shoal-review-admission:v1\n' + JSON.stringify({ reviewerNodeId: 11, targetRepositoryId: 55, repositoryName: 'project' }) });
 const judgment = () => ({ id: 11, user: { id: 1 }, body: 'shoal-review-event:v1\n' + JSON.stringify({ type: 'REVIEWED', reviewerNodeId: 11, targetRepositoryId: 55, targetRepositoryFullName: 'alice/project', targetDefaultBranch: 'main', targetCommit: sha, reviewPolicyPath: 'README.md', reviewPolicyCommit: sha, verdict: 'PASS', actualStarState: true, reviewedAt: '2026-09-24T00:00:00Z' }) });
 try {
+  test('published capability refuses final caller before accepted Platform refresh', () => {
+    const f = fixture('published-final', finalCaller); f.state.canonical = files(finalCaller); f.state.issues = [request()];
+    const pre = git(f.directory, 'rev-parse', 'HEAD');
+    for (const name of ['init', 'review', 're-review']) f.command(name, 1, 'CLI_UPGRADE_REQUIRED', publishedEnv);
+    assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
+    assert.equal(f.state.issues[0].state, 'open'); assert.deepEqual(f.state.comments, {}); assert.equal(f.state.starred, false);
+    assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre); assert.equal(git(f.directory, 'status', '--porcelain'), '');
+    f.command('init', 0, 'NO_CHANGES');
+    f.command('review', 0, 'SUPPORTED');
+    assert.equal(f.state.agentCalls, 1); assert.equal(f.state.starred, true); assert.equal(f.state.issues[0].state, 'closed');
+    f.command('re-review', 0, 'SUPPORTED');
+    assert.equal(f.state.agentCalls, 1); assert.equal(f.state.comments['1'].length, 2);
+  });
+  test('one-byte final caller drift refuses semantic work before any mutation', () => {
+    const f = fixture('final-drift', finalCaller + ' '); f.state.canonical = files(finalCaller); f.state.issues = [request()];
+    for (const name of ['review', 're-review']) f.command(name, 1, 'REPAIRABLE_STATION_DRIFT');
+    assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0); assert.equal(f.state.starred, false);
+    assert.equal(f.state.issues[0].state, 'open'); assert.deepEqual(f.state.comments, {});
+  });
   test('shipped old capability refuses Phase 3 init, Review and Re-review with zero mutation', () => {
     const f = fixture('old-capability'); f.state.issues = [request()];
     const pre = git(f.directory, 'rev-parse', 'HEAD');

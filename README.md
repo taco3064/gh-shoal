@@ -97,8 +97,8 @@ byte-identical to the approved platform contract.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `221be1f60f2d39a2e64e9f74a4690149f8aa1560` (tree
-`49e4c380ab351e217069c7f838aaa3c12117f45f`). The snapshot includes the exact
+Platform source at `05e2a5603c5c7da56708ed71aebfe02fe728af7a` (tree
+`7aeb267776221cb7628deeb3d8d33c29e58aee85`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
 all four retained official Schema 1 generations keep their original bindings.
@@ -106,6 +106,14 @@ The CLI uses that schema only for compatibility, without computing workload
 metrics or changing Review / Re-review semantics. CI and release verification compare committed Platform bytes and
 regenerate the snapshot. Updating a component version does not expand Protocol
 support; mutable runtime discovery never expands an installed binary's authority.
+
+The accepted final Phase 4 caller (`b9162cae...`) binds Summary Action
+`4918e1afe85f15f8fe263eaf2866cd02a1f70a62` and Protocol 1 / Schema 2.
+The preliminary `11259fa...` candidate in the previous owner-published snapshot
+was never accepted by Platform and is not retained as authority. The five
+previously accepted Platform workflow bindings remain unchanged. The auxiliary
+`hosted-review.yml` is synchronized by `init` but is not a base readiness
+predicate; its final Hosted trust remains a separate Platform decision.
 
 Review commands check the remote default-branch managed surfaces at one exact
 commit and scan formal history before admission, Agent execution, or lifecycle
