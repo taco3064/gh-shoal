@@ -7,8 +7,8 @@ import { resolve } from 'node:path';
 import * as authority from '../reviewruntime/protocol/source/network-compatibility.ts';
 
 const directory = 'reviewruntime/protocol/';
-const sourceCommit = '221be1f60f2d39a2e64e9f74a4690149f8aa1560';
-const sourceTree = '49e4c380ab351e217069c7f838aaa3c12117f45f';
+const sourceCommit = '05e2a5603c5c7da56708ed71aebfe02fe728af7a';
+const sourceTree = '7aeb267776221cb7628deeb3d8d33c29e58aee85';
 const paths = {
   'source/network-compatibility.ts': 'src/protocol/services/network_compatibility/index.ts',
   'review-v1.json': 'protocol/review-v1.json',

@@ -84,6 +84,68 @@ func TestRefreshPreservesShippedCapabilityAndRejectsUnknownBindings(t *testing.T
 	}
 }
 
+func TestFinalHostedCallerRefreshUsesAcceptedPlatformAuthority(t *testing.T) {
+	oldBytes, err := managedFixtureFS.ReadFile("testdata/capability-v0.9.0.json")
+	if err != nil || hashBytes(oldBytes) != "28ccae7b338b2a9e3c64141d1231d652dacbc3ead19d29a2397d1c87ed58629c" {
+		t.Fatal("historical published capability bytes changed")
+	}
+	var old capability
+	if err := json.Unmarshal(oldBytes, &old); err != nil {
+		t.Fatal(err)
+	}
+	refreshed, err := loadCapability(protocolFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := managedFixtureFS.ReadFile("testdata/reviewer-summary-final-hosted.yml")
+	if err != nil || hashBytes(caller) != "b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105" {
+		t.Fatal("final caller frozen bytes changed")
+	}
+	files := realManagedFixture()
+	files[summaryPath] = caller
+	if old.supports(files) || !refreshed.supports(files) {
+		t.Fatal("final caller support did not come from accepted Platform refresh")
+	}
+	for digest, binding := range old.SummaryWorkflows {
+		// This preliminary candidate was owner-published without Platform acceptance;
+		// its presence in the released snapshot cannot create compatibility authority.
+		if digest == "11259fa4266e6369dfbdcf6195c6d975377e63ea32f1f6c5989261cc472afead" {
+			continue
+		}
+		if refreshed.SummaryWorkflows[digest] != binding {
+			t.Fatalf("accepted legacy binding changed: %s", digest)
+		}
+	}
+	binding := refreshed.SummaryWorkflows[hashBytes(caller)]
+	if binding.ActionCommit != "4918e1afe85f15f8fe263eaf2866cd02a1f70a62" || binding.ReviewerSummary != (summaryContract{1, 2}) {
+		t.Fatal("final caller lost exact Summary Action / contract binding")
+	}
+	files[summaryPath] = []byte(strings.ReplaceAll(string(caller), binding.ActionCommit, strings.Repeat("b", 40)))
+	if refreshed.supports(files) {
+		t.Fatal("substituted Summary Action was accepted")
+	}
+	files[summaryPath] = caller
+	for _, contract := range []summaryContract{{1, 999}, {999, 2}} {
+		changed := binding
+		changed.ReviewerSummary = contract
+		refreshed.SummaryWorkflows[hashBytes(caller)] = changed
+		if refreshed.supports(files) {
+			t.Fatal("unknown final caller contract accepted")
+		}
+	}
+	refreshed.SummaryWorkflows[hashBytes(caller)] = binding
+	for _, aux := range [][]byte{nil, []byte("stale auxiliary bytes")} {
+		files[hostedPath] = aux
+		if !refreshed.supports(files) {
+			t.Fatal("Hosted auxiliary changed base readiness")
+		}
+	}
+	files[summaryPath] = append(append([]byte(nil), caller...), ' ')
+	if refreshed.supports(files) {
+		t.Fatal("one-byte final caller drift was accepted")
+	}
+}
+
 func TestReviewCompatibilityPreflightRefusesBeforeAnySideEffects(t *testing.T) {
 	for _, command := range []string{"review", "re-review"} {
 		for _, kind := range []string{"byte drift", "missing file", "Issues disabled", "canonical newer", "unavailable", "unknown event", "unknown admission", "unsupported tuple"} {

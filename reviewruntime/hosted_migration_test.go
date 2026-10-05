@@ -21,7 +21,7 @@ func syncFixture() map[string][]byte {
 	return files
 }
 
-func TestFrozenHostedCallerCompatibility(t *testing.T) {
+func TestUnacceptedPreliminaryHostedCallerRefuses(t *testing.T) {
 	caller, err := os.ReadFile("testdata/reviewer-summary-hosted.yml")
 	if err != nil {
 		t.Fatal(err)
@@ -35,8 +35,8 @@ func TestFrozenHostedCallerCompatibility(t *testing.T) {
 	}
 	files := realManagedFixture()
 	files[summaryPath] = caller
-	if !capability.supports(files) {
-		t.Fatal("frozen Hosted caller is unsupported")
+	if capability.supports(files) {
+		t.Fatal("unaccepted preliminary Hosted caller became Platform authority")
 	}
 	files[summaryPath] = append(append([]byte(nil), caller...), ' ')
 	if capability.supports(files) {

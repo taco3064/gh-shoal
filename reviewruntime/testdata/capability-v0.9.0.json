@@ -1,11 +1,11 @@
 {
   "source": {
     "repository": "taco3064/shoal-app",
-    "commit": "05e2a5603c5c7da56708ed71aebfe02fe728af7a",
-    "tree": "7aeb267776221cb7628deeb3d8d33c29e58aee85"
+    "commit": "221be1f60f2d39a2e64e9f74a4690149f8aa1560",
+    "tree": "49e4c380ab351e217069c7f838aaa3c12117f45f"
   },
   "sourceFiles": {
-    "src/protocol/services/network_compatibility/index.ts": "892c198414ce059eaea38a60ecf8d40f982f0ea7dd7053ce31c6ad8cc4c9737f",
+    "src/protocol/services/network_compatibility/index.ts": "6824ab32f8ff68c93b18a9475a1fe20785431de2ba8d7b3ab85ce025e1b6cd3d",
     "protocol/review-v1.json": "aabab39c22d45826331babe6c4488f8a3cebc2f23e537f364e6a43eeedbb6453"
   },
   "networkRoot": {
@@ -31,7 +31,7 @@
     "6f5dad1fd33ec1ea077eb30e866ef8dcf4d9d840239701b997781418da6c7f2c"
   ],
   "summaryWorkflows": {
-    "b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105": {
+    "11259fa4266e6369dfbdcf6195c6d975377e63ea32f1f6c5989261cc472afead": {
       "actionCommit": "4918e1afe85f15f8fe263eaf2866cd02a1f70a62",
       "reviewerSummary": {
         "protocolVersion": 1,
