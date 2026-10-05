@@ -14,7 +14,7 @@ var managedFixtureFS embed.FS
 func realManagedFixture() map[string][]byte {
 	form, _ := managedFixtureFS.ReadFile("testdata/review-request.yml")
 	workflow, _ := managedFixtureFS.ReadFile("testdata/reviewer-summary-current.yml")
-	return map[string][]byte{managedPaths[0]: form, summaryPath: workflow}
+	return map[string][]byte{requestFormPath: form, summaryPath: workflow}
 }
 
 func TestInstalledCapabilityUsesExplicitRealContracts(t *testing.T) {
@@ -95,7 +95,7 @@ func TestReviewCompatibilityPreflightRefusesBeforeAnySideEffects(t *testing.T) {
 				case "byte drift":
 					f.managed[summaryPath] = append(f.managed[summaryPath], '\n')
 				case "missing file":
-					delete(f.managed, managedPaths[0])
+					delete(f.managed, requestFormPath)
 				case "Issues disabled":
 					f.node.HasIssues = boolPtr(false)
 				case "canonical newer":
