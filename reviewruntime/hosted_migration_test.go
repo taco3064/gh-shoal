@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,29 @@ func syncFixture() map[string][]byte {
 	files := realManagedFixture()
 	files[hostedPath] = []byte("name: Controlled Hosted fixture\non:\n  workflow_call:\n")
 	return files
+}
+
+func TestFrozenHostedCallerCompatibility(t *testing.T) {
+	caller, err := os.ReadFile("testdata/reviewer-summary-hosted.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(caller) != "11259fa4266e6369dfbdcf6195c6d975377e63ea32f1f6c5989261cc472afead" {
+		t.Fatal("frozen caller bytes changed")
+	}
+	capability, err := loadCapability(protocolFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := realManagedFixture()
+	files[summaryPath] = caller
+	if !capability.supports(files) {
+		t.Fatal("frozen Hosted caller is unsupported")
+	}
+	files[summaryPath] = append(append([]byte(nil), caller...), ' ')
+	if capability.supports(files) {
+		t.Fatal("one-byte caller drift was accepted")
+	}
 }
 
 func TestSynchronizationAndCompatibilityHaveDistinctPathContracts(t *testing.T) {
@@ -114,9 +138,20 @@ func TestHostedSynchronizationAndRollback(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				var originalMode os.FileMode
 				if initial == "stale" {
 					if err := os.WriteFile(filepath.Join(dir, hostedPath), original, 0755); err != nil {
 						t.Fatal(err)
+					}
+				}
+				if initial == "stale" {
+					info, err := os.Stat(filepath.Join(dir, hostedPath))
+					if err != nil {
+						t.Fatal(err)
+					}
+					originalMode = info.Mode().Perm()
+					if runtime.GOOS != "windows" && originalMode != 0755 {
+						t.Fatal("fixture lost executable mode")
 					}
 				}
 				policy := []byte("Reviewer-owned README policy\n")
@@ -165,7 +200,7 @@ func TestHostedSynchronizationAndRollback(t *testing.T) {
 						}
 					} else {
 						info, e := os.Stat(filepath.Join(dir, hostedPath))
-						if readErr != nil || e != nil || !bytes.Equal(actual, original) || info.Mode().Perm() != 0755 {
+						if readErr != nil || e != nil || !bytes.Equal(actual, original) || info.Mode().Perm() != originalMode {
 							t.Fatal("rollback lost original auxiliary bytes or mode")
 						}
 					}

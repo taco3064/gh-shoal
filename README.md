@@ -97,8 +97,8 @@ byte-identical to the approved platform contract.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `134d82457c99777cba752a549fb7e26ab239d71c` (tree
-`7ff3bfca36f1e0b8b4c5d46d43e0510454d99b5c`). The snapshot includes the exact
+Platform source at `221be1f60f2d39a2e64e9f74a4690149f8aa1560` (tree
+`49e4c380ab351e217069c7f838aaa3c12117f45f`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
 all four retained official Schema 1 generations keep their original bindings.
