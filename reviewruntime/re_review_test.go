@@ -126,7 +126,7 @@ func pendingReReview(t *testing.T, target reviewRepository, requestIssue int) re
 }
 
 func admissionFor(t *testing.T, target reviewRepository, name string) reviewComment {
-	return reviewComment{ID: 10, User: reviewUser{ID: 1, Login: "reviewer", Type: "User"}, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{ReviewerNodeID: 11, TargetRepositoryID: target.ID, RepositoryName: name})}
+	return reviewComment{ID: 10, User: reviewUser{ID: 1, Login: "reviewer", Type: "User"}, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{ReviewerNodeID: 11, TargetRepositoryID: target.ID, RepositoryName: name}, "alice")}
 }
 
 func TestReReviewRequiresExplicitSupportedAgentBeforeSideEffects(t *testing.T) {
@@ -148,7 +148,7 @@ func TestRootOwnerReReviewAndRequesterRevalidation(t *testing.T) {
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
 	f.issues[0].State = "closed"
 	f.comments[1] = []reviewComment{
-		{ID: 10, User: f.root.Owner, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{ReviewerNodeID: rootID, TargetRepositoryID: f.target.ID, RepositoryName: "project"})},
+		{ID: 10, User: f.root.Owner, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{ReviewerNodeID: rootID, TargetRepositoryID: f.target.ID, RepositoryName: "project"}, "alice")},
 		{ID: 11, User: f.root.Owner, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: rootID, TargetRepositoryID: f.target.ID, TargetRepositoryFullName: f.target.FullName, TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"})},
 	}
 	f.heads[f.target.ID] = testSHA2
@@ -380,7 +380,8 @@ func TestReReviewRequesterPendingUsesMaintenancePath(t *testing.T) {
 	}
 	admissions := 0
 	for _, body := range bodies {
-		if strings.HasPrefix(body, protocolFixture(t).Admission.Marker+"\n") {
+		var admission admissionRecord
+		if decodeRecord(body, protocolFixture(t).Admission.Marker, &admission) {
 			admissions++
 		}
 	}

@@ -57,5 +57,10 @@
       "targetRepositoryId",
       "repositoryName"
     ]
+  },
+  "evidence": {
+    "formatVersion": 1,
+    "startSentinel": "<!-- shoal-evidence:v1:start -->",
+    "endSentinel": "<!-- shoal-evidence:v1:end -->"
   }
 }

@@ -94,11 +94,27 @@ The machine-readable request and event contract comes from
 Its checked-in embedded copy at `reviewruntime/protocol/review-v1.json` must remain
 byte-identical to the approved platform contract.
 
+## Human-first Review evidence
+
+Local and Hosted execution use the same deterministic runtime codec. Each formal
+comment presents the result, Target, full Target/Policy commits, actual Star state,
+review time, and explanation before a collapsed Formal Shoal evidence section.
+Envelope format 1 is independent from Review Protocol 1. Only the machine record
+is authoritative; explanation lives in presentation and cannot change eligibility,
+Star state, identity, lifecycle, or compatibility.
+
+Admission derives the displayed Target from the authoritative Request author and
+formal repository name. Malformed, duplicated, or unsupported canonical envelopes
+fail closed before mutation. Ordinary prose and legacy raw markers are not formal
+evidence. Manual Review uses the same Platform renderer and Reviewer-owner rules;
+see the [public guidance](https://taco3064.github.io/shoal-app/how-it-works/).
+No historical comments are rewritten.
+
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `05e2a5603c5c7da56708ed71aebfe02fe728af7a` (tree
-`7aeb267776221cb7628deeb3d8d33c29e58aee85`). The snapshot includes the exact
+Platform source at `443fba06046acaaa71f2e8c67e64a6d3af053c4f` (tree
+`ac84215752db0d2ccf6b566bc8ad49be2e66159e`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
 all four retained official Schema 1 generations keep their original bindings.
@@ -107,7 +123,9 @@ metrics or changing Review / Re-review semantics. CI and release verification co
 regenerate the snapshot. Updating a component version does not expand Protocol
 support; mutable runtime discovery never expands an installed binary's authority.
 
-The accepted final Phase 4 caller (`b9162cae...`) binds Summary Action
+The human-first Stage A caller `0dee3b797307225e38b475e0456cff6434ca53c4b0580fb3f4a11dfdc5eece35`
+binds Summary Action `47e1c3ab5762d66e6f49c3f2a15c133a9785679c` and Protocol 1 / Schema 2.
+All six previously accepted bindings remain unchanged. The earlier accepted Phase 4 caller (`b9162cae...`) binds Summary Action
 `4918e1afe85f15f8fe263eaf2866cd02a1f70a62` and Protocol 1 / Schema 2.
 The preliminary `11259fa...` candidate in the previous owner-published snapshot
 was never accepted by Platform and is not retained as authority. The five
@@ -144,6 +162,7 @@ and GitHub CLI available:
 
 ```bash
 node script/compatibility.mjs <exact-shoal-app-checkout>
+node script/verify-evidence.mjs <exact-shoal-app-checkout>
 go test ./...
 node script/smoke-compatibility.mjs
 ```

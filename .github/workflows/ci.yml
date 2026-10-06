@@ -37,11 +37,14 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: taco3064/shoal-app
-          ref: 05e2a5603c5c7da56708ed71aebfe02fe728af7a
+          ref: 443fba06046acaaa71f2e8c67e64a6d3af053c4f
           path: compatibility-source
 
       - name: Verify exact Platform correspondence
         run: node script/compatibility.mjs compatibility-source
+
+      - name: Verify canonical evidence against exact Platform codec
+        run: node script/verify-evidence.mjs compatibility-source
 
       - name: Test
         run: go test ./...
@@ -82,7 +85,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: taco3064/shoal-app
-          ref: 05e2a5603c5c7da56708ed71aebfe02fe728af7a
+          ref: 443fba06046acaaa71f2e8c67e64a6d3af053c4f
           path: compatibility-source
 
       - name: Verify exact Platform correspondence

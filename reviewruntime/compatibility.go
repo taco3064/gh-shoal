@@ -164,17 +164,16 @@ func (c reviewCommand) stationPreflight(ctx context.Context, node reviewReposito
 // current evidence remains malformed; an explicit unsupported contract is never
 // coerced into the current shape. Arbitrary conversational text is not evidence.
 func incompatibleEvidence(body string, s capability) bool {
-	marker, payload, _ := strings.Cut(body, "\n")
-	formal := strings.HasPrefix(marker, "shoal-review-event:v") || strings.HasPrefix(marker, "shoal-review-admission:v")
-	if !formal || strings.ContainsAny(marker, " \t\r") {
+	document, present, err := decodeEvidence(body)
+	if !present {
 		return false
 	}
-	if marker != s.EventMarker && marker != s.AdmissionMarker {
+	if err != nil {
 		return true
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal([]byte(payload), &fields) != nil {
-		return false
+	if json.Unmarshal(document.Record, &fields) != nil {
+		return true
 	}
 	for _, name := range []string{"protocolVersion", "schemaVersion", "eventSchemaVersion", "admissionSchemaVersion"} {
 		if value, ok := fields[name]; ok {

@@ -124,7 +124,7 @@ func TestHostRefusalBeforeAgentAndLifecycle(t *testing.T) {
 					f.managed[summaryPath] = []byte("unsupported")
 					f.canonical[summaryPath] = []byte("new unsupported")
 				case "history":
-					f.comments[1] = []reviewComment{{ID: 1, User: f.node.Owner, Body: "shoal-review-event:v999\n{}"}}
+					f.comments[1] = []reviewComment{{ID: 1, User: f.node.Owner, Body: "<!-- shoal-evidence:v999:start -->\n{}\n<!-- shoal-evidence:v999:end -->"}}
 				case "external":
 					f.failOn = "contents/"
 				case "dirty":
