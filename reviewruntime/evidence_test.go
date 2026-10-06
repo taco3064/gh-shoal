@@ -104,3 +104,23 @@ func TestHumanFirstCanonicalCallerCapability(t *testing.T) {
 		t.Fatal("drift accepted")
 	}
 }
+
+func TestRepairedCanonicalCallerCapability(t *testing.T) {
+	s, err := loadCapability(protocolFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := realManagedFixture()
+	caller, err := managedFixtureFS.ReadFile("testdata/reviewer-summary-f01.yml")
+	if err != nil || hashBytes(caller) != "08c07806fa86966739e14c6ad62c75e7f91210ae565072fa327b5ab7dc830c59" {
+		t.Fatal("F-01 Stage A fixture drift")
+	}
+	files[summaryPath] = caller
+	if !s.supports(files) || s.SummaryWorkflows[hashBytes(caller)].ActionCommit != "bd75984561987d390413a176cd8e7982aee2cb9a" {
+		t.Fatal("repaired exact caller unsupported")
+	}
+	files[summaryPath] = append(append([]byte{}, caller...), ' ')
+	if s.supports(files) {
+		t.Fatal("drift accepted")
+	}
+}

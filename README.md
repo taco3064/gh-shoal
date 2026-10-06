@@ -113,8 +113,8 @@ No historical comments are rewritten.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `443fba06046acaaa71f2e8c67e64a6d3af053c4f` (tree
-`ac84215752db0d2ccf6b566bc8ad49be2e66159e`). The snapshot includes the exact
+Platform source at `aa1db06ca0eb71cdba79fad4a311dbd57fc13667` (tree
+`6966b62fe2851d5b6dabfc63c2bd3b9d7da3e26b`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
 all four retained official Schema 1 generations keep their original bindings.
@@ -125,6 +125,11 @@ support; mutable runtime discovery never expands an installed binary's authority
 
 The human-first Stage A caller `0dee3b797307225e38b475e0456cff6434ca53c4b0580fb3f4a11dfdc5eece35`
 binds Summary Action `47e1c3ab5762d66e6f49c3f2a15c133a9785679c` and Protocol 1 / Schema 2.
+The F-01 repair caller `08c07806fa86966739e14c6ad62c75e7f91210ae565072fa327b5ab7dc830c59`
+binds repaired Summary Action `bd75984561987d390413a176cd8e7982aee2cb9a` under the same contracts.
+This capability refresh retains all seven prior bindings. The shared runtime
+continues to refuse malformed evidence before effects; Summary I accounting is
+owned by the Platform and root Summary Action, independently of runtime refusal.
 All six previously accepted bindings remain unchanged. The earlier accepted Phase 4 caller (`b9162cae...`) binds Summary Action
 `4918e1afe85f15f8fe263eaf2866cd02a1f70a62` and Protocol 1 / Schema 2.
 The preliminary `11259fa...` candidate in the previous owner-published snapshot
