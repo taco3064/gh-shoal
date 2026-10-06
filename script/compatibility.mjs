@@ -7,8 +7,8 @@ import { resolve } from 'node:path';
 import * as authority from '../reviewruntime/protocol/source/network-compatibility.ts';
 
 const directory = 'reviewruntime/protocol/';
-const sourceCommit = '05e2a5603c5c7da56708ed71aebfe02fe728af7a';
-const sourceTree = '7aeb267776221cb7628deeb3d8d33c29e58aee85';
+const sourceCommit = '443fba06046acaaa71f2e8c67e64a6d3af053c4f';
+const sourceTree = 'ac84215752db0d2ccf6b566bc8ad49be2e66159e';
 const paths = {
   'source/network-compatibility.ts': 'src/protocol/services/network_compatibility/index.ts',
   'review-v1.json': 'protocol/review-v1.json',
@@ -24,6 +24,7 @@ const capability = {
   reviewProtocolVersion: contract.protocolVersion,
   admissionMarker: contract.admission.marker,
   eventMarker: contract.event.marker,
+  evidence: contract.evidence,
   supportedReviewerSummaryContracts: authority.supportedReviewerSummaryContracts,
   requestFormDigests: [...authority.allowedCanonicalReviewRequestFormDigests],
   summaryWorkflows: Object.fromEntries(authority.allowedSummaryWorkflows),
@@ -38,6 +39,7 @@ if (process.argv[2] === '--generate') {
   const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8' }).trim();
   assert.equal(git('rev-parse', 'HEAD'), sourceCommit, 'Platform source commit mismatch');
   assert.equal(git('rev-parse', 'HEAD^{tree}'), sourceTree, 'Platform source tree mismatch');
+  assert.equal(git('status', '--porcelain', '--untracked-files=all'), '', 'Platform source checkout must be clean');
   for (const [copy, path] of Object.entries(paths)) {
     const exact = execFileSync('git', ['-C', source, 'show', `${sourceCommit}:${path}`]);
     assert.deepEqual(readFileSync(directory + copy), exact, `Platform byte correspondence: ${path}`);

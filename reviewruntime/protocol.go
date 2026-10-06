@@ -1,12 +1,10 @@
 package reviewruntime
 
 import (
-	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,6 +15,11 @@ import (
 var reviewContractFS embed.FS
 
 type reviewContract struct {
+	Evidence struct {
+		FormatVersion int    `json:"formatVersion"`
+		StartSentinel string `json:"startSentinel"`
+		EndSentinel   string `json:"endSentinel"`
+	} `json:"evidence"`
 	ProtocolVersion string `json:"protocolVersion"`
 	Request         struct {
 		RepositoryHeading string `json:"repositoryHeading"`
@@ -44,7 +47,7 @@ func loadReviewContract() (reviewContract, error) {
 		return p, err
 	}
 	err = json.Unmarshal(b, &p)
-	if err != nil || p.ProtocolVersion == "" || p.Request.RepositoryHeading == "" || p.Admission.Marker == "" || p.Event.Marker == "" || p.Event.PolicyPath != "README.md" {
+	if err != nil || p.Evidence.FormatVersion != 1 || p.Evidence.StartSentinel == "" || p.Evidence.EndSentinel == "" || p.ProtocolVersion == "" || p.Request.RepositoryHeading == "" || p.Admission.Marker == "" || p.Event.Marker == "" || p.Event.PolicyPath != "README.md" {
 		return p, errors.New("invalid embedded Shoal review protocol")
 	}
 	return p, nil
@@ -101,30 +104,10 @@ type reviewEvent struct {
 	Verdict                  string `json:"verdict,omitempty"`
 	ActualStarState          *bool  `json:"actualStarState,omitempty"`
 	ReviewedAt               string `json:"reviewedAt,omitempty"`
-	Explanation              string `json:"explanation,omitempty"`
+	Explanation              string `json:"-"`
 	EligibilityTargetCommit  string `json:"eligibilityTargetCommit,omitempty"`
 	RequestIssueNumber       int    `json:"requestIssueNumber,omitempty"`
 	Reason                   string `json:"reason,omitempty"`
-}
-
-func encodeRecord(marker string, v any) string {
-	b, _ := json.Marshal(v)
-	return marker + "\n" + string(b)
-}
-
-func decodeRecord(body, marker string, out any) bool {
-	prefix := marker + "\n"
-	if !strings.HasPrefix(body, prefix) {
-		return false
-	}
-	payload := strings.TrimSpace(strings.TrimPrefix(body, prefix))
-	d := json.NewDecoder(bytes.NewBufferString(payload))
-	d.DisallowUnknownFields()
-	if d.Decode(out) != nil {
-		return false
-	}
-	var extra any
-	return errors.Is(d.Decode(&extra), io.EOF)
 }
 
 func validEvent(e reviewEvent, p reviewContract, nodeID, targetID int64) bool {

@@ -80,7 +80,7 @@ func TestAutomatedReviewPartialResultsAndRetry(t *testing.T) {
 		if strings.Contains(call, "--method PUT user/starred/alice/project") {
 			star = i
 		}
-		if strings.Contains(call, "--method POST repos/reviewer/shoal-station/issues/9/comments") && strings.Contains(call, "shoal-review-event:v1") {
+		if strings.Contains(call, "--method POST repos/reviewer/shoal-station/issues/9/comments") && strings.Contains(call, "shoal-evidence:v1:start") {
 			result = i
 		}
 		if strings.Contains(call, "--method PATCH repos/reviewer/shoal-station/issues/9 ") {

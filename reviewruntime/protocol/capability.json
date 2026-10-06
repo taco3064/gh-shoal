@@ -1,12 +1,12 @@
 {
   "source": {
     "repository": "taco3064/shoal-app",
-    "commit": "05e2a5603c5c7da56708ed71aebfe02fe728af7a",
-    "tree": "7aeb267776221cb7628deeb3d8d33c29e58aee85"
+    "commit": "443fba06046acaaa71f2e8c67e64a6d3af053c4f",
+    "tree": "ac84215752db0d2ccf6b566bc8ad49be2e66159e"
   },
   "sourceFiles": {
-    "src/protocol/services/network_compatibility/index.ts": "892c198414ce059eaea38a60ecf8d40f982f0ea7dd7053ce31c6ad8cc4c9737f",
-    "protocol/review-v1.json": "aabab39c22d45826331babe6c4488f8a3cebc2f23e537f364e6a43eeedbb6453"
+    "src/protocol/services/network_compatibility/index.ts": "d5064c4a9a99397654a59bcbc5664e64c49467717073c800c68ed94e841fd59d",
+    "protocol/review-v1.json": "6854913a37430e532209f705c6d80affeeb22e700745282b4a4a924aa849213c"
   },
   "networkRoot": {
     "fullName": "taco3064/shoal-station",
@@ -17,6 +17,11 @@
   "reviewProtocolVersion": "1",
   "admissionMarker": "shoal-review-admission:v1",
   "eventMarker": "shoal-review-event:v1",
+  "evidence": {
+    "formatVersion": 1,
+    "startSentinel": "<!-- shoal-evidence:v1:start -->",
+    "endSentinel": "<!-- shoal-evidence:v1:end -->"
+  },
   "supportedReviewerSummaryContracts": [
     {
       "protocolVersion": 1,
@@ -31,6 +36,13 @@
     "6f5dad1fd33ec1ea077eb30e866ef8dcf4d9d840239701b997781418da6c7f2c"
   ],
   "summaryWorkflows": {
+    "0dee3b797307225e38b475e0456cff6434ca53c4b0580fb3f4a11dfdc5eece35": {
+      "actionCommit": "47e1c3ab5762d66e6f49c3f2a15c133a9785679c",
+      "reviewerSummary": {
+        "protocolVersion": 1,
+        "summarySchemaVersion": 2
+      }
+    },
     "b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105": {
       "actionCommit": "4918e1afe85f15f8fe263eaf2866cd02a1f70a62",
       "reviewerSummary": {

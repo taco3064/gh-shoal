@@ -289,7 +289,7 @@ func (c reviewCommand) admit(ctx context.Context, node reviewRepository, issue r
 	}
 	if !found {
 		record := admissionRecord{ReviewerNodeID: node.ID, TargetRepositoryID: target.ID, RepositoryName: name}
-		return c.commentOnce(ctx, node.FullName, node.Owner.ID, issue.Number, encodeRecord(c.protocol.Admission.Marker, record))
+		return c.commentOnce(ctx, node.FullName, node.Owner.ID, issue.Number, encodeRecord(c.protocol.Admission.Marker, record, issue.User.Login))
 	}
 	if canonical.Number == issue.Number {
 		return nil

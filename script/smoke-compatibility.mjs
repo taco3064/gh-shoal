@@ -32,15 +32,19 @@ copyFileSync(shim, join(shimDir, process.platform === 'win32' ? 'git.exe' : 'git
 run(realGh, ['extension', 'install', '.']);
 assert.match(run(realGh, ['shoal', '--help']), /re-review/);
 
-// Equivalent old-release proof: identical runtime, with the exact snapshot
-// shipped at v0.6.0 (source 4d9ee5fa941fd5ded3011d8c4642c5bf2fff94f1).
-// This historical fixture is evidence, never an additional runtime authority.
+// Historical-allowlist simulation with the current evidence codec. These are
+// controlled compatibility fixtures, not a claim to execute historical binaries.
 const oldCapability = readFileSync('reviewruntime/testdata/capability-v0.6.0.json');
 assert.equal(createHash('sha256').update(oldCapability).digest('hex'), '85cdccabd9ffca8e7e758ebdb3d75f4abb240d86f3f67ad65265b7484a7a930d');
 const oldSource = join(temporary, 'old-source', 'gh-shoal'); mkdirSync(oldSource, { recursive: true });
 for (const path of ['cmd', 'internal', 'reviewruntime']) cpSync(join(checkout, path), join(oldSource, path), { recursive: true });
 copyFileSync('go.mod', join(oldSource, 'go.mod'));
-writeFileSync(join(oldSource, 'reviewruntime/protocol/capability.json'), oldCapability);
+const historicalWithCurrentCodec = bytes => {
+  const value = JSON.parse(bytes);
+  value.sourceFiles['protocol/review-v1.json'] = createHash('sha256').update(readFileSync('reviewruntime/protocol/review-v1.json')).digest('hex');
+  return JSON.stringify(value);
+};
+writeFileSync(join(oldSource, 'reviewruntime/protocol/capability.json'), historicalWithCurrentCodec(oldCapability));
 run('go', ['build', '-o', extension, './cmd/gh-shoal'], oldSource);
 const oldEnv = { GH_CONFIG_DIR: join(temporary, 'old-gh-config'), XDG_DATA_HOME: join(temporary, 'old-data'), XDG_STATE_HOME: join(temporary, 'old-state') };
 run(realGh, ['extension', 'install', '.'], oldSource, oldEnv);
@@ -51,7 +55,7 @@ const publishedCapability = readFileSync('reviewruntime/testdata/capability-v0.9
 assert.equal(createHash('sha256').update(publishedCapability).digest('hex'), '28ccae7b338b2a9e3c64141d1231d652dacbc3ead19d29a2397d1c87ed58629c');
 const publishedSource = join(temporary, 'published-source', 'gh-shoal');
 cpSync(oldSource, publishedSource, { recursive: true });
-writeFileSync(join(publishedSource, 'reviewruntime/protocol/capability.json'), publishedCapability);
+writeFileSync(join(publishedSource, 'reviewruntime/protocol/capability.json'), historicalWithCurrentCodec(publishedCapability));
 run('go', ['build', '-o', extension, './cmd/gh-shoal'], publishedSource);
 const publishedEnv = { GH_CONFIG_DIR: join(temporary, 'published-gh-config'), XDG_DATA_HOME: join(temporary, 'published-data'), XDG_STATE_HOME: join(temporary, 'published-state') };
 run(realGh, ['extension', 'install', '.'], publishedSource, publishedEnv);
@@ -59,7 +63,7 @@ const finalCaller = readFileSync('reviewruntime/testdata/reviewer-summary-final-
 assert.equal(createHash('sha256').update(finalCaller).digest('hex'), 'b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105');
 
 const form = readFileSync('reviewruntime/testdata/review-request.yml', 'utf8');
-const current = readFileSync('reviewruntime/testdata/reviewer-summary-current.yml', 'utf8');
+const current = readFileSync('reviewruntime/testdata/reviewer-summary-human-first.yml', 'utf8');
 const older = readFileSync('reviewruntime/testdata/reviewer-summary-older.yml', 'utf8');
 const requestPath = '.github/ISSUE_TEMPLATE/review-request.yml';
 const summaryPath = '.github/workflows/reviewer-summary.yml';
@@ -103,10 +107,11 @@ function fixture(name, localWorkflow = current) {
 }
 const test = (name, body) => { body(); passed++; console.log(`PASS ${name}`); };
 const request = () => ({ number: 1, state: 'open', body: '### Repository name\n\nproject\n', user: { id: 2, login: 'alice', type: 'User' } });
-const admission = () => ({ id: 10, user: { id: 1 }, body: 'shoal-review-admission:v1\n' + JSON.stringify({ reviewerNodeId: 11, targetRepositoryId: 55, repositoryName: 'project' }) });
-const judgment = () => ({ id: 11, user: { id: 1 }, body: 'shoal-review-event:v1\n' + JSON.stringify({ type: 'REVIEWED', reviewerNodeId: 11, targetRepositoryId: 55, targetRepositoryFullName: 'alice/project', targetDefaultBranch: 'main', targetCommit: sha, reviewPolicyPath: 'README.md', reviewPolicyCommit: sha, verdict: 'PASS', actualStarState: true, reviewedAt: '2026-09-24T00:00:00Z' }) });
+const evidence = record => '<!-- shoal-evidence:v1:start -->\n' + JSON.stringify({formatVersion:1,record,presentation:{}}) + '\n<!-- shoal-evidence:v1:end -->';
+const admission = () => ({ id: 10, user: { id: 1 }, body: evidence({ reviewerNodeId: 11, targetRepositoryId: 55, repositoryName: 'project' }) });
+const judgment = () => ({ id: 11, user: { id: 1 }, body: evidence({ type: 'REVIEWED', reviewerNodeId: 11, targetRepositoryId: 55, targetRepositoryFullName: 'alice/project', targetDefaultBranch: 'main', targetCommit: sha, reviewPolicyPath: 'README.md', reviewPolicyCommit: sha, verdict: 'PASS', actualStarState: true, reviewedAt: '2026-09-24T00:00:00Z' }) });
 try {
-  test('published capability refuses final caller before accepted Platform refresh', () => {
+  test('historical published allowlist refuses final caller before Platform refresh', () => {
     const f = fixture('published-final', finalCaller); f.state.canonical = files(finalCaller); f.state.issues = [request()];
     const pre = git(f.directory, 'rev-parse', 'HEAD');
     for (const name of ['init', 'review', 're-review']) f.command(name, 1, 'CLI_UPGRADE_REQUIRED', publishedEnv);
@@ -125,7 +130,7 @@ try {
     assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0); assert.equal(f.state.starred, false);
     assert.equal(f.state.issues[0].state, 'open'); assert.deepEqual(f.state.comments, {});
   });
-  test('shipped old capability refuses Phase 3 init, Review and Re-review with zero mutation', () => {
+  test('historical allowlist refuses newer init, Review and Re-review with zero mutation', () => {
     const f = fixture('old-capability'); f.state.issues = [request()];
     const pre = git(f.directory, 'rev-parse', 'HEAD');
     for (const name of ['init', 'review', 're-review']) f.command(name, 1, 'CLI_UPGRADE_REQUIRED', oldEnv);
@@ -172,7 +177,7 @@ try {
   });
   test('unsupported formal Protocol evidence refuses both commands before side effects', () => {
     const f = fixture('history'); f.state.issues = [request()];
-    f.state.comments['1'] = [{ id: 10, user: { id: 1 }, body: 'shoal-review-event:v999\n{}' }];
+    f.state.comments['1'] = [{ id: 10, user: { id: 1 }, body: '<!-- shoal-evidence:v999:start -->\n{}\n<!-- shoal-evidence:v999:end -->' }];
     f.command('review', 1, 'INCOMPATIBLE_PROTOCOL_EVIDENCE'); f.command('re-review', 1, 'INCOMPATIBLE_PROTOCOL_EVIDENCE');
     assert.equal(f.state.writes, 0); assert.equal(f.state.agentCalls, 0);
   });
@@ -208,7 +213,8 @@ try {
     }
   });
   test('supported legacy Root preserves two-file init convergence and existing auxiliary bytes', () => {
-    const f = fixture('legacy-root'); delete f.state.canonical[hostedPath];
+    const legacyCaller = readFileSync('reviewruntime/testdata/reviewer-summary-current.yml', 'utf8');
+    const f = fixture('legacy-root', legacyCaller); f.state.canonical = files(legacyCaller); delete f.state.canonical[hostedPath];
     const pre = git(f.directory, 'rev-parse', 'HEAD');
     f.command('init', 0, 'NO_CHANGES');
     assert.equal(git(f.directory, 'rev-parse', 'HEAD'), pre);
@@ -242,7 +248,7 @@ try {
     assert.equal(f.state.comments['1'].length, 2); assert.equal(f.state.agentCalls, 0); assert.equal(f.state.writes, 1); assert.equal(f.state.lostDone, true);
   });
   test('ambiguous Judgment append recovers exact evidence and never repeats Agent', () => {
-    const f = fixture('ambiguous'); f.state.issues = [request()]; f.state.lost = 'body=shoal-review-event:';
+    const f = fixture('ambiguous'); f.state.issues = [request()]; f.state.lost = 'body=## Review Result:';
     f.command('review'); f.command('review', 0, 'NO_CHANGES');
     assert.equal(f.state.agentCalls, 1); assert.equal(f.state.comments['1'].length, 2); assert.equal(f.state.lostDone, true);
   });

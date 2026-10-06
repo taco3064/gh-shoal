@@ -293,7 +293,7 @@ func TestReviewScansAndRejectsInvalidWithoutSemanticSideEffects(t *testing.T) {
 	if f.state(1) != "closed" || !strings.Contains(strings.Join(f.bodies(1), ""), "INVALID_REQUEST") {
 		t.Fatal("nonconforming Issue was ignored")
 	}
-	if f.state(2) != "open" || !strings.Contains(strings.Join(f.bodies(2), ""), protocolFixture(t).Admission.Marker) {
+	if f.state(2) != "open" || !isAdmissionEvidence(t, f.bodies(2)[0]) {
 		t.Fatal("first request did not become pending canonical thread")
 	}
 	if f.state(3) != "closed" {
@@ -416,7 +416,7 @@ func TestDuplicateAndReReviewBasis(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := fixture()
 			f.addIssue(1, reviewBody("project"), f.requester.Owner)
-			f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
+			f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
 			f.issues[0].State = "closed"
 			f.addIssue(2, reviewBody("project"), f.requester.Owner)
 			f.head = tc.head
@@ -445,7 +445,7 @@ func TestCanonicalIdentitySurvivesTargetRename(t *testing.T) {
 	f.addIssue(1, reviewBody("renamed"), f.requester.Owner)
 	f.target.FullName = "alice/renamed"
 	f.target.Name = "renamed"
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "renamed"}), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "renamed"}, "alice"), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("renamed"), f.requester.Owner)
 	f.process(t)
@@ -457,7 +457,7 @@ func TestCanonicalIdentitySurvivesTargetRename(t *testing.T) {
 func TestUntrustedCommentsDoNotEstablishCanonicalThread(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.requester.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.requester.Owner}}
 	f.process(t)
 	if f.state(1) != "open" || len(f.bodies(1)) != 2 || f.comments[1][1].User.ID != f.node.Owner.ID {
 		t.Fatalf("requester-authored admission treated as trusted: %+v", f.comments[1])
@@ -467,7 +467,7 @@ func TestUntrustedCommentsDoNotEstablishCanonicalThread(t *testing.T) {
 func TestRetryAfterReReviewEventAppend(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	f.head = testSHA2
@@ -488,7 +488,7 @@ func TestRetryAfterReReviewEventAppend(t *testing.T) {
 func TestInvalidJudgmentDoesNotCreateReviewBasis(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetCommit: testSHA1, ReviewPolicyCommit: testSHA1}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}, {ID: 11, Body: encodeRecord("shoal-review-event:v1", reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetCommit: testSHA1, ReviewPolicyCommit: testSHA1}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	f.head = testSHA2
@@ -501,7 +501,7 @@ func TestInvalidJudgmentDoesNotCreateReviewBasis(t *testing.T) {
 func TestDamagedCanonicalPreventsSecondThread(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, "deleted payload", f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	err := f.command(t).admitOpen(context.Background())
@@ -535,7 +535,7 @@ func TestPendingEventDoesNotReplaceLastJudgmentBasis(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
 	f.comments[1] = []reviewComment{
-		{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner},
+		{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner},
 		{ID: 11, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner},
 		{ID: 12, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "RE_REVIEW_REQUESTED", ReviewerNodeID: 11, TargetRepositoryID: 55, RequestIssueNumber: 2, EligibilityTargetCommit: testSHA2, ReviewPolicyCommit: testSHA1, Reason: "TARGET_CHANGED"}), User: f.node.Owner},
 	}
@@ -554,7 +554,7 @@ func TestPendingEventDoesNotReplaceLastJudgmentBasis(t *testing.T) {
 func TestTransferredTargetReusesStableCanonicalIdentity(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("project"), f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}, {ID: 11, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}, {ID: 11, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.target.FullName = "bob/project"
 	f.target.Owner = reviewUser{ID: 3, Login: "bob", Type: "User"}
@@ -568,7 +568,7 @@ func TestTransferredTargetReusesStableCanonicalIdentity(t *testing.T) {
 func TestEditedCanonicalNameCannotRedirectRecordedIdentity(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("other"), f.requester.Owner)
-	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}), User: f.node.Owner}}
+	f.comments[1] = []reviewComment{{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 55, "project"}, "alice"), User: f.node.Owner}}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	err := f.command(t).admitOpen(context.Background())
@@ -581,13 +581,13 @@ func TestUnrelatedJudgmentCannotRebindAdmittedIssue(t *testing.T) {
 	f := fixture()
 	f.addIssue(1, reviewBody("other"), f.requester.Owner)
 	f.comments[1] = []reviewComment{
-		{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 56, "other"}), User: f.node.Owner},
+		{ID: 10, Body: encodeRecord(protocolFixture(t).Admission.Marker, admissionRecord{11, 56, "other"}, "alice"), User: f.node.Owner},
 		{ID: 11, Body: encodeRecord(protocolFixture(t).Event.Marker, reviewEvent{Type: "REVIEWED", ReviewerNodeID: 11, TargetRepositoryID: 55, TargetRepositoryFullName: "alice/project", TargetDefaultBranch: "main", TargetCommit: testSHA1, ReviewPolicyPath: "README.md", ReviewPolicyCommit: testSHA1, Verdict: "PASS", ActualStarState: boolPtr(true), ReviewedAt: "2026-09-24T00:00:00Z"}), User: f.node.Owner},
 	}
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	f.process(t)
-	if f.state(2) != "open" || len(f.bodies(2)) != 1 || !strings.Contains(f.bodies(2)[0], protocolFixture(t).Admission.Marker) {
+	if f.state(2) != "open" || len(f.bodies(2)) != 1 || !isAdmissionEvidence(t, f.bodies(2)[0]) {
 		t.Fatalf("unrelated judgment stole canonical identity: %+v", f)
 	}
 }
@@ -599,7 +599,13 @@ func TestUnrecordedJudgmentRequiresOriginalTargetBinding(t *testing.T) {
 	f.issues[0].State = "closed"
 	f.addIssue(2, reviewBody("project"), f.requester.Owner)
 	f.process(t)
-	if f.state(2) != "open" || !strings.Contains(f.bodies(2)[0], protocolFixture(t).Admission.Marker) {
+	if f.state(2) != "open" || !isAdmissionEvidence(t, f.bodies(2)[0]) {
 		t.Fatalf("unbound manual judgment stole canonical identity: %+v", f)
 	}
+}
+
+func isAdmissionEvidence(t *testing.T, body string) bool {
+	t.Helper()
+	var record admissionRecord
+	return decodeRecord(body, protocolFixture(t).Admission.Marker, &record)
 }

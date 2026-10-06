@@ -19,7 +19,7 @@ func TestAmbiguousWritesObserveCommittedStateWithoutReplay(t *testing.T) {
 			c.run = func(ctx context.Context, program string, args ...string) ([]byte, error) {
 				b, err := base(ctx, program, args...)
 				command := strings.Join(args, " ")
-				match := stage == "admission" && strings.Contains(command, "body=shoal-review-admission:") || stage == "judgment" && strings.Contains(command, "body=shoal-review-event:") || stage == "star" && strings.Contains(command, "--method PUT user/starred/") || stage == "close" && strings.Contains(command, "state=closed")
+				match := stage == "admission" && strings.Contains(command, "body=## Request admitted") || stage == "judgment" && strings.Contains(command, "body=## Review Result:") || stage == "star" && strings.Contains(command, "--method PUT user/starred/") || stage == "close" && strings.Contains(command, "state=closed")
 				if !lost && err == nil && match {
 					lost = true
 					return nil, errors.New("response lost after server committed")

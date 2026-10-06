@@ -50,6 +50,14 @@ export const allowedCanonicalReviewRequestFormDigests = new Set([
 // explicit Reviewer Summary Protocol/schema contract.
 export const allowedSummaryWorkflows = new Map<string, SummaryWorkflowTrust>([
   [
+    // shoal-app#66: frozen shoal-station#26 Stage A (1002b82c); Protocol 1 / Schema 2.
+    '0dee3b797307225e38b475e0456cff6434ca53c4b0580fb3f4a11dfdc5eece35',
+    {
+      actionCommit: '47e1c3ab5762d66e6f49c3f2a15c133a9785679c',
+      reviewerSummary: { protocolVersion: 1, summarySchemaVersion: 2 },
+    },
+  ],
+  [
     // shoal-app#49 Stage A: final Phase 4 caller; auxiliary Hosted trust is separate.
     'b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105',
     {

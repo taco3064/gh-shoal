@@ -169,12 +169,12 @@ func TestReviewCompatibilityPreflightRefusesBeforeAnySideEffects(t *testing.T) {
 					want = "EXTERNAL_STATE_UNAVAILABLE"
 				default:
 					want = "INCOMPATIBLE_PROTOCOL_EVIDENCE"
-					body := "shoal-review-event:v999\n{}"
+					body := "<!-- shoal-evidence:v999:start -->\n{}\n<!-- shoal-evidence:v999:end -->"
 					if kind == "unknown admission" {
-						body = "shoal-review-admission:v999\n{}"
+						body = "<!-- shoal-evidence:v1:start -->\n{}"
 					}
 					if kind == "unsupported tuple" {
-						body = "shoal-review-event:v1\n{\"protocolVersion\":999}"
+						body = "<!-- shoal-evidence:v1:start -->\n{\"formatVersion\":1,\"record\":{\"protocolVersion\":999},\"presentation\":{}}\n<!-- shoal-evidence:v1:end -->"
 					}
 					f.comments[1] = []reviewComment{{ID: 10, Body: body, User: f.node.Owner}}
 				}
