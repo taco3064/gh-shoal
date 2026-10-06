@@ -1,0 +1,225 @@
+name: Reviewer Summary
+
+on:
+  schedule:
+    - cron: '25 3 * * 0'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: shoal-station-${{ github.repository_id }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  mode:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      automated_review: ${{ steps.mode.outputs.automated_review }}
+    steps:
+      - name: Validate Reviewer scheduled semantic mode
+        id: mode
+        env:
+          AUTOMATED_REVIEW: ${{ vars.SHOAL_AUTOMATED_REVIEW }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$AUTOMATED_REVIEW" in
+            ''|none) mode=none ;;
+            review|re-review|all) mode="$AUTOMATED_REVIEW" ;;
+            *)
+              mode=none
+              echo '::warning::Invalid SHOAL_AUTOMATED_REVIEW; semantic work refused, Reviewer Summary continues'
+              ;;
+          esac
+          printf 'automated_review=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+
+  hosted:
+    needs: mode
+    if: ${{ needs.mode.outputs.automated_review != 'none' && needs.mode.outputs.automated_review != '' }}
+    permissions:
+      contents: read
+      issues: read
+      copilot-requests: write
+      id-token: write
+    uses: ./.github/workflows/hosted-review.yml
+    with:
+      automated_review: ${{ needs.mode.outputs.automated_review }}
+
+  summary:
+    needs: [mode, hosted]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.produced.outputs.digest }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      attestation_id: ${{ steps.attest.outputs.attestation-id }}
+    steps:
+      - name: Compute Reviewer Summary
+        id: compute
+        uses: taco3064/shoal-action@1916eb85cd251b073520956512cd9b5549fba2a7
+        with:
+          network_root_repository_id: '1379044983'
+          network_root_repository_name: shoal-station
+          github_token: ${{ github.token }}
+
+      - name: Record Action-produced byte identity
+        id: produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f reviewer-summary.json || { echo '::error::Summary generation produced no file'; exit 1; }
+          digest=$(sha256sum reviewer-summary.json | cut -d ' ' -f 1)
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'Action-produced Summary SHA-256: %s\n' "$digest"
+
+      - name: Attest exact Reviewer Summary bytes
+        id: attest
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f
+        with:
+          subject-path: reviewer-summary.json
+
+      - name: Verify attestation subject and unchanged Summary
+        id: integrity
+        env:
+          EXPECTED_DIGEST: ${{ steps.produced.outputs.digest }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::Attestation subject / Action-produced byte-integrity failure"' ERR
+          printf '%s  reviewer-summary.json\n' "$EXPECTED_DIGEST" | sha256sum --check --status
+          # Inspect only the attestation statement; never parse or rewrite Summary bytes.
+          jq -er '.dsseEnvelope.payload' "$BUNDLE_PATH" | base64 --decode > attestation-statement.json
+          jq -e --arg digest "$EXPECTED_DIGEST" '
+            (.subject | length == 1) and
+            (.subject[0].name == "reviewer-summary.json") and
+            (.subject[0].digest.sha256 == $digest)
+          ' attestation-statement.json > /dev/null
+
+      - name: Publish attested Reviewer Summary
+        id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewer-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reviewer-summary.json
+          if-no-files-found: error
+
+      - name: Record attempt correspondence
+        id: correspondence
+        env:
+          EXPECTED_DIGEST: ${{ steps.produced.outputs.digest }}
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::Archival / Action-produced byte-integrity failure"' ERR
+          printf '%s  reviewer-summary.json\n' "$EXPECTED_DIGEST" | sha256sum --check --status
+          test -n "$ARTIFACT_ID"
+          test -n "$ATTESTATION_ID"
+          printf 'Summary SHA-256: %s\n' "$EXPECTED_DIGEST"
+          printf 'Reviewer Summary attempt: %s + %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          printf 'Workflow commit: %s\n' "$GITHUB_SHA"
+          printf 'Artifact ID: %s\nAttestation ID: %s\n' "$ARTIFACT_ID" "$ATTESTATION_ID"
+
+      - name: Diagnose failed Summary evidence stage
+        if: ${{ failure() }}
+        env:
+          COMPUTE: ${{ steps.compute.outcome }}
+          PRODUCED: ${{ steps.produced.outcome }}
+          ATTEST: ${{ steps.attest.outcome }}
+          INTEGRITY: ${{ steps.integrity.outcome }}
+          ARTIFACT: ${{ steps.artifact.outcome }}
+          CORRESPONDENCE: ${{ steps.correspondence.outcome }}
+        run: |
+          printf 'Summary evidence outcomes: generation=%s produced-digest=%s attestation=%s byte-integrity=%s archival=%s correspondence=%s\n' \
+            "$COMPUTE" "$PRODUCED" "$ATTEST" "$INTEGRITY" "$ARTIFACT" "$CORRESPONDENCE"
+          exit 1
+
+  publish:
+    needs: summary
+    if: ${{ always() && needs.summary.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Retrieve the preserved Summary bytes
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: reviewer-summary-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Publish an attempt-specific public Git object
+        env:
+          EXPECTED_DIGEST: ${{ needs.summary.outputs.digest }}
+          ARTIFACT_ID: ${{ needs.summary.outputs.artifact_id }}
+          ATTESTATION_ID: ${{ needs.summary.outputs.attestation_id }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage=archival-byte-integrity
+          trap 'echo "::error::Reviewer Summary publication failed at ${stage}"' ERR
+          test -f reviewer-summary.json
+          printf '%s  reviewer-summary.json\n' "$EXPECTED_DIGEST" | sha256sum --check --status
+
+          # A root commit containing only the original JSON cannot alter main,
+          # README.md, Issues, workflows, or any other repository content.
+          # Creating an already occupied tag fails; no attempt uses a force update.
+          tag="shoal-summary-${{ github.repository_id }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          api_post() {
+            local status
+            status=$(curl --silent --show-error --output api-response.json --write-out '%{http_code}' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'Content-Type: application/json' \
+              -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/$1" \
+              -d "$2") || return 1
+            if [[ "$status" != 201 ]]; then
+              if [[ "$1" == refs ]] && jq -e '.message == "Reference already exists"' api-response.json > /dev/null; then
+                echo '::error::Reviewer Summary transport identity collision; existing evidence preserved' >&2
+              else
+                printf '::error::Transport %s creation failed (HTTP %s)\n' "$1" "$status" >&2
+              fi
+              return 1
+            fi
+            cat api-response.json
+          }
+
+          blob_payload=$(jq -n --arg content "$(base64 -w0 reviewer-summary.json)" \
+            '{content: $content, encoding: "base64"}')
+          stage=transport-blob-creation
+          blob=$(api_post blobs "$blob_payload" | jq -er '.sha')
+          tree_payload=$(jq -n --arg blob "$blob" \
+            '{tree: [{path: "reviewer-summary.json", mode: "100644", type: "blob", sha: $blob}]}')
+          stage=transport-tree-creation
+          tree=$(api_post trees "$tree_payload" | jq -er '.sha')
+          commit_payload=$(jq -n --arg tree "$tree" --arg tag "$tag" \
+            '{message: ("Shoal Reviewer Summary " + $tag), tree: $tree, parents: []}')
+          stage=transport-commit-creation
+          commit=$(api_post commits "$commit_payload" | jq -er '.sha')
+          ref_payload=$(jq -n --arg tag "$tag" --arg commit "$commit" \
+            '{ref: ("refs/tags/" + $tag), sha: $commit}')
+          stage=transport-ref-creation
+          api_post refs "$ref_payload" > /dev/null
+
+          # Read as an anonymous consumer; a written but inaccessible object is
+          # a failed publication, not an accepted-looking successful attempt.
+          url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${tag}/reviewer-summary.json"
+          stage=anonymous-transport-retrieval
+          curl --fail --location --silent --show-error --retry 6 --retry-delay 3 \
+            --output published-reviewer-summary.json "$url"
+          stage=published-byte-mismatch
+          cmp --silent reviewer-summary.json published-reviewer-summary.json
+          printf 'Reviewer Node repository ID: %s\n' '${{ github.repository_id }}'
+          printf 'Attempt: %s + %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          printf 'Workflow commit: %s\n' "$GITHUB_SHA"
+          printf 'Artifact ID: %s\nAttestation ID: %s\n' "$ARTIFACT_ID" "$ATTESTATION_ID"
+          printf 'Transport tag: %s\nTransport commit: %s\n' "$tag" "$commit"
+          printf 'Transport URL: %s\nTransport SHA-256: %s\n' "$url" "$EXPECTED_DIGEST"
