@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: taco3064/shoal-app
-          ref: aa1db06ca0eb71cdba79fad4a311dbd57fc13667
+          ref: 4c0cba98518c815f3ef889889cfca9a8ddcf8ad9
           path: compatibility-source
 
       - name: Verify exact Platform correspondence

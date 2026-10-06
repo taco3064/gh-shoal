@@ -63,7 +63,7 @@ const finalCaller = readFileSync('reviewruntime/testdata/reviewer-summary-final-
 assert.equal(createHash('sha256').update(finalCaller).digest('hex'), 'b9162cae864bbd6e00745346f37f701fe5c003d3367cc3dc37c6fb394f9d8105');
 
 const form = readFileSync('reviewruntime/testdata/review-request.yml', 'utf8');
-const current = readFileSync('reviewruntime/testdata/reviewer-summary-f01.yml', 'utf8');
+const current = readFileSync('reviewruntime/testdata/reviewer-summary-f02.yml', 'utf8');
 const older = readFileSync('reviewruntime/testdata/reviewer-summary-older.yml', 'utf8');
 const requestPath = '.github/ISSUE_TEMPLATE/review-request.yml';
 const summaryPath = '.github/workflows/reviewer-summary.yml';

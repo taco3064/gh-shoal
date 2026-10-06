@@ -113,8 +113,8 @@ No historical comments are rewritten.
 ## Compatibility, migration, and recovery
 
 The installed binary uses a generated capability snapshot of the exact reviewed
-Platform source at `aa1db06ca0eb71cdba79fad4a311dbd57fc13667` (tree
-`6966b62fe2851d5b6dabfc63c2bd3b9d7da3e26b`). The snapshot includes the exact
+Platform source at `4c0cba98518c815f3ef889889cfca9a8ddcf8ad9` (tree
+`d43fad3aaf66863a59f505578dcc710629ebc9fb`). The snapshot includes the exact
 Protocol bytes and the Platform's explicit managed-surface / Summary contract
 bindings. The accepted workload generation uses Protocol 1 / Summary Schema 2;
 all four retained official Schema 1 generations keep their original bindings.
@@ -247,3 +247,7 @@ The local commands and downstream hosted integration use the same public
 [`reviewruntime` package](docs/shared-review-runtime.md). The contract documents
 exact-generation consumption, semantic Agent input/results, separate GitHub
 authority roles, structured failures, and deterministic recovery.
+
+The F-02 repair caller `acf3b8edc35584309a73bfe67e2c6fd453acb07e9a1033de34f4f6ab039e042f`
+is admitted alongside all historical generations. This refresh changes the exact
+Platform capability source only; Local/Hosted evidence and effect semantics are unchanged.
